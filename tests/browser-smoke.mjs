@@ -1,0 +1,240 @@
+// Optional browser integration suite. The shipped application has no npm dependencies.
+// npm install --no-save playwright && npx playwright install chromium
+// node tests/browser-smoke.mjs
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { spawn } from "node:child_process";
+import { cp, mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createHash } from "node:crypto";
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const temp = await mkdtemp(path.join(os.tmpdir(), "wordloop-test-"));
+await cp("dist", temp, { recursive: true });
+await mkdir("test-results", { recursive: true });
+const server = spawn(process.execPath, ["scripts/serve.mjs"], {
+  env: { ...process.env, PORT: "4390", SERVE_DIR: temp },
+});
+await new Promise((res, rej) => {
+  server.stdout.once("data", res);
+  server.once("error", rej);
+  server.once("exit", () => rej(Error("Test server stopped")));
+});
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.env.WORDLOOP_CHROMIUM_PATH
+    ? { executablePath: process.env.WORDLOOP_CHROMIUM_PATH }
+    : {}),
+  args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+});
+const base = "http://127.0.0.1:4390/";
+let contexts = [];
+const errors = [];
+const context = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  timezoneId: "Asia/Seoul",
+});
+contexts.push(context);
+const page = await context.newPage();
+page.on("pageerror", (e) => errors.push(e.message));
+const visible = (p, role, name) =>
+  p.getByRole(role, { name, exact: true }).waitFor({ state: "visible" });
+try {
+  await page.goto(base);
+  await visible(page, "heading", "오늘도, 한 단어 더.");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.screenshot({
+    path: "test-results/home-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("link", { name: "설정", exact: true }).click();
+  await page.getByLabel("하루 새 단어 수", { exact: true }).fill("1");
+  await page.getByLabel("하루 새 단어 수", { exact: true }).press("Tab");
+  await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
+  await page.getByLabel("문제 방향", { exact: true }).selectOption("meaning");
+  await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
+  await page.getByRole("link", { name: "홈", exact: true }).click();
+  await page.getByRole("button", { name: "오늘 학습 시작하기" }).click();
+  await page.getByRole("button", { name: "이제 문제로 확인하기" }).click();
+  const id = await page.locator(".word-card .favorite").getAttribute("data-id");
+  await page.locator(`.answer:not([data-id="${id}"])`).first().click();
+  await visible(page, "button", "다음 문제");
+  await page.reload();
+  await visible(page, "button", "다음 문제");
+  assert.equal(await page.locator(".answer.wrong").count(), 1);
+  await page.screenshot({
+    path: "test-results/quiz-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "다음 문제", exact: true }).click();
+  await page.locator(`.answer[data-id="${id}"]`).click();
+  await page.getByRole("button", { name: "학습 결과 보기" }).click();
+  await visible(page, "heading", "오늘의 반복이 쌓였어요.");
+  await page.getByRole("button", { name: "홈으로 돌아가기" }).click();
+  await page.getByRole("link", { name: "단어장", exact: true }).click();
+  await page.getByRole("button", { name: "틀린 문제", exact: true }).click();
+  assert.equal(await page.locator(".word-row").count(), 1);
+  await page.locator(".check-word").check();
+  assert.equal(
+    await page.getByRole("button", { name: "선택한 1개 풀기" }).isEnabled(),
+    true,
+  );
+  await page.getByRole("button", { name: "전체", exact: true }).click();
+  await page.getByRole("searchbox").fill("book");
+  assert((await page.locator(".word-row").count()) >= 3);
+  await page.getByRole("button", { name: "추가", exact: true }).click();
+  await page.getByLabel("영어 단어", { exact: true }).fill("persist");
+  await page
+    .getByLabel("쉬운 영어 뜻", { exact: true })
+    .fill("to keep trying even when something is difficult");
+  await page
+    .getByLabel("예문", { exact: true })
+    .fill("I will persist until I finish.");
+  await page.getByLabel("한국어 힌트", { exact: true }).fill("꾸준히 계속하다");
+  await page.getByRole("button", { name: "저장하기", exact: true }).click();
+  await page.getByText("내 단어장에 저장했어요.", { exact: true }).waitFor();
+  await page.getByRole("searchbox").fill("persist");
+  assert.equal(await page.locator(".word-row").count(), 1);
+  await page
+    .getByRole("button", { name: "persist 즐겨찾기", exact: true })
+    .click();
+  await page
+    .locator('[aria-label="persist 즐겨찾기"][aria-pressed=true]')
+    .waitFor();
+  await page.locator(".word-open").click();
+  await page.getByRole("button", { name: "이 뜻 학습하기" }).click();
+  await page.getByRole("button", { name: "이제 문제로 확인하기" }).click();
+  await page.getByRole("button", { name: "정답 보기", exact: true }).click();
+  await page.getByRole("button", { name: "알고 있어요", exact: true }).click();
+  await page.getByRole("button", { name: "학습 결과 보기" }).click();
+  await page.getByRole("button", { name: "홈으로 돌아가기" }).click();
+  await page.getByRole("link", { name: "설정", exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "백업 저장" }).click();
+  const download = await downloadPromise;
+  const backup = JSON.parse(await readFile(await download.path(), "utf8"));
+  assert.equal(backup.state.custom.length, 1);
+  assert(backup.state.favorites.includes(backup.state.custom[0].id));
+  assert.equal(
+    backup.state.days["2026-09-25"]?.newWords.length ??
+      Object.values(backup.state.days)[0].newWords.length,
+    2,
+  );
+  const backupPath = path.join(temp, "backup.json");
+  await writeFile(backupPath, JSON.stringify(backup));
+  // Verify content updates preserve the full learning state, then reject a mixed deployment.
+  const dataPath = path.join(temp, "data/beginner.json");
+  const pack = JSON.parse(await readFile(dataPath, "utf8"));
+  const borrowed = pack.senses.find((s) => s.id === id);
+  borrowed.definitions[0] = "to use another person’s thing and return it later";
+  await writeFile(dataPath, JSON.stringify(pack));
+  const manifestPath = path.join(temp, "data/manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.version = "test-content-update";
+  const file = manifest.files.find((f) => f.path === "data/beginner.json");
+  file.sha256 = createHash("sha256")
+    .update(await readFile(dataPath))
+    .digest("hex");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await page
+    .getByRole("button", { name: "업데이트 확인", exact: true })
+    .click();
+  await page
+    .getByText("단어장을 업데이트했어요. 학습 기록은 그대로예요.", {
+      exact: true,
+    })
+    .waitFor();
+  await page.getByRole("link", { name: "단어장", exact: true }).click();
+  await page.getByRole("searchbox").fill("borrow");
+  assert(
+    (await page.locator(".word-open").first().innerText()).includes(
+      "return it later",
+    ),
+  );
+  await page.getByRole("link", { name: "설정", exact: true }).click();
+  manifest.version = "test-broken-update";
+  file.sha256 = "0".repeat(64);
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await page
+    .getByRole("button", { name: "업데이트 확인", exact: true })
+    .click();
+  await page
+    .getByText(
+      "업데이트를 확인하지 못했어요. 저장된 단어장으로 계속 학습할 수 있어요.",
+      { exact: true },
+    )
+    .waitFor();
+  await context.setOffline(true);
+  await page.reload();
+  await visible(page, "heading", "나에게 맞는 학습");
+  assert.equal(
+    await page.getByLabel("하루 새 단어 수", { exact: true }).inputValue(),
+    "1",
+  );
+  await page.getByRole("link", { name: "단어장", exact: true }).click();
+  await page.getByRole("searchbox").fill("persist");
+  assert.equal(await page.locator(".word-row").count(), 1);
+  await context.setOffline(false);
+  // A fresh browser context simulates restoring onto a new device.
+  const restored = await browser.newContext({
+    viewport: { width: 320, height: 720 },
+    timezoneId: "Asia/Seoul",
+  });
+  contexts.push(restored);
+  const other = await restored.newPage();
+  other.on("pageerror", (e) => errors.push(e.message));
+  manifest.version = "test-content-update";
+  file.sha256 = createHash("sha256")
+    .update(await readFile(dataPath))
+    .digest("hex");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await other.goto(base);
+  await visible(other, "heading", "오늘도, 한 단어 더.");
+  await other.getByRole("link", { name: "설정", exact: true }).click();
+  other.on("dialog", (d) => d.accept());
+  await other.locator("#backup-file").setInputFiles(backupPath);
+  await other.getByText("백업을 불러왔어요.", { exact: true }).waitFor();
+  assert.equal(
+    await other.getByLabel("하루 새 단어 수", { exact: true }).inputValue(),
+    "1",
+  );
+  for (const [route, label, title] of [
+    ["home", "홈", "오늘도, 한 단어 더."],
+    ["learn", "학습", "어떤 반복을 해볼까요?"],
+    ["words", "단어장", "나의 단어장"],
+    ["settings", "설정", "나에게 맞는 학습"],
+  ]) {
+    await other.getByRole("link", { name: label, exact: true }).click();
+    await visible(other, "heading", title);
+    assert(
+      await other.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      `320px overflow in ${route}`,
+    );
+    await other.screenshot({
+      path: `test-results/${route}-320.png`,
+      fullPage: true,
+    });
+  }
+  const secondTab = await restored.newPage();
+  await secondTab.goto(base);
+  await visible(secondTab, "heading", "다른 창에서 Wordloop를 사용 중이에요.");
+  await secondTab.close();
+  await page.getByRole("link", { name: "홈", exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({
+    path: "test-results/home-desktop.png",
+    fullPage: true,
+  });
+  assert.deepEqual(errors, []);
+  console.log(
+    "PASS: lesson/retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
+  );
+} finally {
+  await Promise.all(contexts.map((c) => c.close()));
+  await browser.close();
+  server.kill();
+  await rm(temp, { recursive: true, force: true });
+}

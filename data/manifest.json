@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "version": "1-325bb8beeb",
+  "words": 1062,
+  "senses": 1200,
+  "examples": 2400,
+  "files": [
+    {
+      "path": "data/advanced.json",
+      "sha256": "9f5122e64fcf707bfa5ec41779f5fee00beba568c27c1111795220fa83be12c8"
+    },
+    {
+      "path": "data/beginner.json",
+      "sha256": "d8cb64afdbf763d4b3c220f740cc57356dc5266d15c4903dced19963e340da7f"
+    },
+    {
+      "path": "data/intermediate.json",
+      "sha256": "8700a823cfbffe1b6e75e097ec44ef30ba180cb0cceb9ba5ffe282ace1b19517"
+    }
+  ]
+}

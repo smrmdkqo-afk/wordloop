@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f7f7ef" />
+    <meta
+      name="description"
+      content="쉬운 영어로 뜻을 익히는 나만의 오프라인 단어장, Wordloop."
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Wordloop" />
+    <title>Wordloop · 조금씩, 매일 영어</title>
+    <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./src/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">본문으로</a>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="#home" aria-label="Wordloop 홈"
+          ><span class="brand-mark">w</span>wordloop<span class="brand-dot"
+            >.</span
+          ></a
+        >
+        <p class="brand-note">조금씩, 매일 영어.</p>
+        <nav id="navigation" aria-label="주 메뉴"></nav>
+        <div class="sidebar-note">
+          <span class="tiny-dot"></span
+          ><span id="connection">내 기기에 저장하는 단어장</span>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <span class="top-title" id="top-title">나의 학습 공간</span
+          ><span class="top-tag">ENGLISH IN ENGLISH</span>
+        </header>
+        <main id="main" tabindex="-1">
+          <div class="loading">
+            <span class="brand-mark">w</span>
+            <p>단어장을 준비하고 있어요…</p>
+          </div>
+        </main>
+        <footer class="desktop-footer">
+          A little practice. A lasting habit.<span>Wordloop 1.0</span>
+        </footer>
+      </div>
+    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <dialog id="dialog"></dialog>
+    <noscript
+      >Wordloop를 사용하려면 브라우저에서 JavaScript를 켜 주세요.</noscript
+    >
+  </body>
+</html>
