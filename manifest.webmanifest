@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "워드루프 · 영어로 익히는 단어장",
-  "short_name": "워드루프",
+  "name": "Wordloop · 영어로 익히는 단어장",
+  "short_name": "Wordloop",
   "description": "쉬운 영어 뜻과 문맥으로 공부하는 오프라인 단어장",
   "lang": "ko",
   "start_url": "./",

@@ -48,22 +48,29 @@ try {
     path: "test-results/home-mobile.png",
     fullPage: true,
   });
-  // Display preferences must survive reloads and keep every app surface in Korean.
+  // A retired visibility preference must not block learning or survive a reload.
+  const seedRemovedSetting = () =>
+    page.evaluate(async () => {
+      const { read, write } = await import("/src/storage.js");
+      const snapshot = await read("snapshot");
+      snapshot.state.settings.hideEnglish = true;
+      await write("snapshot", snapshot);
+    });
   await page.getByRole("link", { name: "설정", exact: true }).click();
   for (const name of ["하루 새 단어 수", "하루 복습 문제 수"]) {
     const input = page.getByLabel(name, { exact: true });
     assert.equal(await input.getAttribute("max"), "300");
     await input.fill("300");
     await input.press("Tab");
-    await page.waitForFunction(
-      () => !document.activeElement?.matches('input[type="number"]'),
-    );
+    await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
   }
-  await page.getByLabel("영어 숨기기", { exact: true }).check();
-  await page.waitForFunction(() => document.title.startsWith("워드루프"));
+  await seedRemovedSetting();
   await page.reload();
   await visible(page, "heading", "나에게 맞는 학습");
-  assert(await page.getByLabel("영어 숨기기", { exact: true }).isChecked());
+  assert.equal(
+    await page.getByLabel("영어 숨기기", { exact: true }).count(),
+    0,
+  );
   assert.equal(
     await page.getByLabel("하루 새 단어 수", { exact: true }).inputValue(),
     "300",
@@ -72,56 +79,31 @@ try {
     await page.getByLabel("하루 복습 문제 수", { exact: true }).inputValue(),
     "300",
   );
-  const noEnglish = async () => {
-    const visibleText = await page.locator("body").innerText();
-    assert(
-      !/[A-Za-z]/.test(visibleText),
-      `Visible English: ${visibleText.match(/[^\n]*[A-Za-z][^\n]*/g)}`,
-    );
-  };
+  const retiredSettingExists = await page.evaluate(async () => {
+    const snapshot = await (await import("/src/storage.js")).read("snapshot");
+    return Object.hasOwn(snapshot.state.settings, "hideEnglish");
+  });
+  assert.equal(retiredSettingExists, false);
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const label of ["홈", "학습", "단어장", "설정"]) {
-      await page.getByRole("link", { name: label, exact: true }).click();
-      await noEnglish();
-      assert(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      );
-    }
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
     const height = await page
       .locator("#navigation")
       .evaluate((el) => el.getBoundingClientRect().height);
     assert(height >= 58 && height <= 60, `Mobile navigation height: ${height}`);
-    await page.screenshot({
-      path: `test-results/settings-hidden-${width}.png`,
-      fullPage: true,
-    });
   }
-  await page.getByRole("button", { name: "설치 안내", exact: true }).click();
-  await page.getByRole("dialog").waitFor({ state: "visible" });
-  await noEnglish();
-  await page.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByRole("link", { name: "단어장", exact: true }).click();
   await page.locator(".word-open").first().click();
-  await noEnglish();
-  await page.screenshot({
-    path: "test-results/word-hidden.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "닫기", exact: true }).click();
-  await page.getByRole("button", { name: "추가", exact: true }).click();
-  await noEnglish();
+  assert.match(await page.locator("dialog .word").innerText(), /[A-Za-z]/);
   await page.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByRole("link", { name: "학습", exact: true }).click();
-  await page
-    .getByRole("button", { name: "영어 표시하고 학습하기", exact: true })
-    .click();
   await visible(page, "heading", "어떤 반복을 해볼까요?");
-  assert((await page.locator(".brand").innerText()).includes("wordloop"));
+  assert.equal(await page.locator(".mode-card").count(), 4);
   await page.getByRole("link", { name: "설정", exact: true }).click();
-  assert(!(await page.getByLabel("영어 숨기기", { exact: true }).isChecked()));
   await page.getByLabel("하루 새 단어 수", { exact: true }).fill("1");
   await page.getByLabel("하루 새 단어 수", { exact: true }).press("Tab");
   await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
@@ -133,6 +115,7 @@ try {
   const id = await page.locator(".word-card .favorite").getAttribute("data-id");
   await page.locator(`.answer:not([data-id="${id}"])`).first().click();
   await visible(page, "button", "학습 결과 보기");
+  await seedRemovedSetting();
   await page.reload();
   await visible(page, "button", "학습 결과 보기");
   assert.equal(await page.locator(".answer.wrong").count(), 1);
@@ -419,7 +402,7 @@ try {
   assert.equal(Object.values(fixedSnapshot.state.days)[0].newWords.length, 10);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: 300-item goals, English hiding and persistence, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
+    "PASS: 300-item goals, removal of English hiding including saved preferences, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
   );
 } finally {
   await Promise.all(contexts.map((c) => c.close()));

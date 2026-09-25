@@ -11,7 +11,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mode: "mixed",
   autoMistakes: true,
   resolveDays: 2,
-  hideEnglish: false,
 });
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -309,9 +308,7 @@ export function validateBackup(input) {
     !s.settings.levels.length ||
     s.settings.levels.some((l) => !Object.hasOwn(LEVELS, l)) ||
     !["mixed", "meaning", "word"].includes(s.settings.mode) ||
-    typeof s.settings.autoMistakes !== "boolean" ||
-    (Object.hasOwn(s.settings, "hideEnglish") &&
-      typeof s.settings.hideEnglish !== "boolean")
+    typeof s.settings.autoMistakes !== "boolean"
   )
     throw new Error("백업의 학습 설정을 확인해 주세요.");
   const idOK = (x) =>
@@ -391,5 +388,6 @@ export function validateBackup(input) {
   for (const k of Object.keys(clean))
     if (Object.hasOwn(s, k)) clean[k] = structuredClone(s[k]);
   clean.settings = { ...structuredClone(DEFAULT_SETTINGS), ...clean.settings };
+  delete clean.settings.hideEnglish;
   return clean;
 }

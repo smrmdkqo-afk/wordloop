@@ -931,12 +931,6 @@ select {
   justify-content: flex-end;
   gap: 8px;
 }
-.empty-actions {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 .setting-row .description {
   font-size: 12px;
   color: var(--muted);
@@ -1607,9 +1601,6 @@ dialog .actions > .primary {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .empty-actions {
-    flex-direction: column;
   }
   .load-more {
     width: 100%;

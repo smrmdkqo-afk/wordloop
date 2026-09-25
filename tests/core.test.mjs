@@ -192,18 +192,13 @@ test("daily goals allow 300 words and reviews and honor remaining quota", () => 
   recordAnswer(s, next.review[0], true, { kind: "review", now: at(25) });
   assert.equal(planStudy(s, senses, at(25)).review.length, 299);
 });
-test("backups preserve 300-item goals and the English visibility setting", () => {
+test("backups preserve 300-item goals", () => {
   const s = emptyState();
   s.settings.dailyNew = 300;
   s.settings.dailyReview = 300;
-  s.settings.hideEnglish = true;
   const envelope = { app: "wordloop", version: 1, state: s };
   assert.deepEqual(validateBackup(envelope), s);
-  for (const invalid of [
-    { dailyNew: 301 },
-    { dailyReview: 301 },
-    { hideEnglish: "false" },
-  ])
+  for (const invalid of [{ dailyNew: 301 }, { dailyReview: 301 }])
     assert.throws(() =>
       validateBackup({
         ...envelope,
@@ -211,12 +206,12 @@ test("backups preserve 300-item goals and the English visibility setting", () =>
       }),
     );
 });
-test("old backups default to showing English without losing learning history", () => {
+test("old backups discard the removed visibility setting without losing learning history", () => {
   const s = emptyState();
   recordAnswer(s, book, false, { kind: "new", now: at(25) });
-  delete s.settings.hideEnglish;
+  s.settings.hideEnglish = true;
   const restored = validateBackup({ app: "wordloop", version: 1, state: s });
-  assert.equal(restored.settings.hideEnglish, false);
+  assert.equal(Object.hasOwn(restored.settings, "hideEnglish"), false);
   assert.deepEqual(restored.progress, s.progress);
   assert.deepEqual(restored.days, s.days);
 });
