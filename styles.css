@@ -910,6 +910,33 @@ select {
   border-bottom: 0;
   padding-bottom: 2px;
 }
+.setting-label {
+  flex: 1;
+  min-width: 0;
+}
+.setting-control {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
+.setting-control:has(input[type="number"]) {
+  white-space: nowrap;
+}
+.data-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .setting-row .description {
   font-size: 12px;
   color: var(--muted);
@@ -1113,10 +1140,13 @@ dialog .example {
   font-size: 14px;
 }
 dialog .actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
-  flex-wrap: wrap;
   margin-top: 21px;
+}
+dialog .actions > .primary {
+  grid-column: 1 / -1;
 }
 .skip {
   position: fixed;
@@ -1259,14 +1289,15 @@ dialog .actions {
     background: #fffffff5;
     backdrop-filter: blur(16px);
     border-top: 1px solid var(--line);
-    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    padding: 4px 10px calc(4px + env(safe-area-inset-bottom));
     z-index: 10;
   }
   .nav-item {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 7px 10px;
+    gap: 2px;
+    padding: 6px 10px;
+    min-height: 44px;
     min-width: 65px;
     font-size: 10px;
     border-radius: 12px;
@@ -1280,8 +1311,8 @@ dialog .actions {
     stroke-width: 2.3;
   }
   .nav-item .icon {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
   }
   .workspace {
     padding: 0 20px;
@@ -1303,7 +1334,7 @@ dialog .actions {
   main {
     margin: 29px auto 32px;
     min-height: 0;
-    padding-bottom: 80px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
   .desktop-footer {
     display: none;
@@ -1554,13 +1585,34 @@ dialog .actions {
     font-size: 12px;
     max-width: 100%;
   }
+  .setting-control:has(> .btn),
+  .setting-control:has(.data-actions),
+  .setting-control:has(select),
+  .setting-control:has(.level-choices) {
+    flex-basis: 100%;
+  }
+  .setting-control > .btn,
+  .setting-control select {
+    width: 100%;
+  }
   .setting-row .level-choices {
     width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .level-choices label {
+    justify-content: center;
   }
   .setting-row .data-actions {
     width: 100%;
-    display: flex;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .empty-actions {
+    flex-direction: column;
+  }
+  .load-more {
+    width: 100%;
   }
   .result {
     margin: 40px auto;
@@ -1572,7 +1624,7 @@ dialog .actions {
     font-size: 25px;
   }
   #toast {
-    bottom: calc(92px + env(safe-area-inset-bottom));
+    bottom: calc(76px + env(safe-area-inset-bottom));
     font-size: 12px;
   }
   dialog {

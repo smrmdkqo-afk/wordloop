@@ -48,7 +48,80 @@ try {
     path: "test-results/home-mobile.png",
     fullPage: true,
   });
+  // Display preferences must survive reloads and keep every app surface in Korean.
   await page.getByRole("link", { name: "설정", exact: true }).click();
+  for (const name of ["하루 새 단어 수", "하루 복습 문제 수"]) {
+    const input = page.getByLabel(name, { exact: true });
+    assert.equal(await input.getAttribute("max"), "300");
+    await input.fill("300");
+    await input.press("Tab");
+    await page.waitForFunction(
+      () => !document.activeElement?.matches('input[type="number"]'),
+    );
+  }
+  await page.getByLabel("영어 숨기기", { exact: true }).check();
+  await page.waitForFunction(() => document.title.startsWith("워드루프"));
+  await page.reload();
+  await visible(page, "heading", "나에게 맞는 학습");
+  assert(await page.getByLabel("영어 숨기기", { exact: true }).isChecked());
+  assert.equal(
+    await page.getByLabel("하루 새 단어 수", { exact: true }).inputValue(),
+    "300",
+  );
+  assert.equal(
+    await page.getByLabel("하루 복습 문제 수", { exact: true }).inputValue(),
+    "300",
+  );
+  const noEnglish = async () => {
+    const visibleText = await page.locator("body").innerText();
+    assert(
+      !/[A-Za-z]/.test(visibleText),
+      `Visible English: ${visibleText.match(/[^\n]*[A-Za-z][^\n]*/g)}`,
+    );
+  };
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const label of ["홈", "학습", "단어장", "설정"]) {
+      await page.getByRole("link", { name: label, exact: true }).click();
+      await noEnglish();
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+    }
+    const height = await page
+      .locator("#navigation")
+      .evaluate((el) => el.getBoundingClientRect().height);
+    assert(height >= 58 && height <= 60, `Mobile navigation height: ${height}`);
+    await page.screenshot({
+      path: `test-results/settings-hidden-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page.getByRole("button", { name: "설치 안내", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "visible" });
+  await noEnglish();
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("link", { name: "단어장", exact: true }).click();
+  await page.locator(".word-open").first().click();
+  await noEnglish();
+  await page.screenshot({
+    path: "test-results/word-hidden.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("button", { name: "추가", exact: true }).click();
+  await noEnglish();
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("link", { name: "학습", exact: true }).click();
+  await page
+    .getByRole("button", { name: "영어 표시하고 학습하기", exact: true })
+    .click();
+  await visible(page, "heading", "어떤 반복을 해볼까요?");
+  assert((await page.locator(".brand").innerText()).includes("wordloop"));
+  await page.getByRole("link", { name: "설정", exact: true }).click();
+  assert(!(await page.getByLabel("영어 숨기기", { exact: true }).isChecked()));
   await page.getByLabel("하루 새 단어 수", { exact: true }).fill("1");
   await page.getByLabel("하루 새 단어 수", { exact: true }).press("Tab");
   await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
@@ -220,7 +293,7 @@ try {
   }
   const secondTab = await restored.newPage();
   await secondTab.goto(base);
-  await visible(secondTab, "heading", "다른 창에서 Wordloop를 사용 중이에요.");
+  await visible(secondTab, "heading", "다른 창에서 워드루프를 사용 중이에요.");
   await secondTab.close();
   await page.getByRole("link", { name: "홈", exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -230,7 +303,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: lesson/retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
+    "PASS: 300-item goals, English hiding and persistence, compact navigation, lesson/retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
   );
 } finally {
   await Promise.all(contexts.map((c) => c.close()));

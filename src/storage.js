@@ -7,7 +7,7 @@ export function openDB() {
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
     r.onblocked = () =>
-      reject(new Error("다른 Wordloop 창을 닫고 다시 열어 주세요."));
+      reject(new Error("다른 워드루프 창을 닫고 다시 열어 주세요."));
   });
   return connection;
 }

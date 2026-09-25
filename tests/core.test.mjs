@@ -171,3 +171,51 @@ test("custom cards without authored distractors use recall instead of guessing o
   assert.equal(q.recall, true);
   assert.equal(q.options.length, 0);
 });
+test("daily goals allow 300 words and reviews and honor remaining quota", () => {
+  const s = emptyState();
+  s.settings.dailyNew = 300;
+  s.settings.dailyReview = 300;
+  s.settings.levels = Object.keys({
+    beginner: 1,
+    intermediate: 1,
+    advanced: 1,
+  });
+  const first = planStudy(s, senses, at(24));
+  assert.equal(first.fresh.length, 300);
+  for (const sense of first.fresh)
+    recordAnswer(s, sense, true, { kind: "new", now: at(24) });
+  assert.equal(planStudy(s, senses, at(24)).fresh.length, 0);
+  const next = planStudy(s, senses, at(25));
+  assert.equal(next.fresh.length, 300);
+  assert.equal(next.review.length, 300);
+  recordAnswer(s, next.review[0], true, { kind: "review", now: at(25) });
+  assert.equal(planStudy(s, senses, at(25)).review.length, 299);
+});
+test("backups preserve 300-item goals and the English visibility setting", () => {
+  const s = emptyState();
+  s.settings.dailyNew = 300;
+  s.settings.dailyReview = 300;
+  s.settings.hideEnglish = true;
+  const envelope = { app: "wordloop", version: 1, state: s };
+  assert.deepEqual(validateBackup(envelope), s);
+  for (const invalid of [
+    { dailyNew: 301 },
+    { dailyReview: 301 },
+    { hideEnglish: "false" },
+  ])
+    assert.throws(() =>
+      validateBackup({
+        ...envelope,
+        state: { ...s, settings: { ...s.settings, ...invalid } },
+      }),
+    );
+});
+test("old backups default to showing English without losing learning history", () => {
+  const s = emptyState();
+  recordAnswer(s, book, false, { kind: "new", now: at(25) });
+  delete s.settings.hideEnglish;
+  const restored = validateBackup({ app: "wordloop", version: 1, state: s });
+  assert.equal(restored.settings.hideEnglish, false);
+  assert.deepEqual(restored.progress, s.progress);
+  assert.deepEqual(restored.days, s.days);
+});

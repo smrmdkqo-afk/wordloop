@@ -1,5 +1,7 @@
 import {
   LEVELS,
+  DEFAULT_SETTINGS,
+  MAX_DAILY_GOAL,
   emptyState,
   today,
   dateKey,
@@ -107,6 +109,27 @@ async function mutation(fn, refresh = true) {
 function countWords(senses) {
   return new Set(senses.map((s) => s.word.toLowerCase())).size;
 }
+function uiText(english, korean) {
+  return escape(state.settings.hideEnglish ? korean : english);
+}
+function koreanHint(sense) {
+  return escape((sense.ko || "한국어 뜻 없음").replace(/[A-Za-z]+/g, "•••"));
+}
+function wordLabel(sense) {
+  return state.settings.hideEnglish ? koreanHint(sense) : escape(sense.word);
+}
+function renderLanguage() {
+  for (const el of document.querySelectorAll("[data-en][data-ko]"))
+    el.textContent = state.settings.hideEnglish ? el.dataset.ko : el.dataset.en;
+  document.title = `${state.settings.hideEnglish ? "워드루프" : "Wordloop"} · 조금씩, 매일 영어`;
+}
+function englishHidden() {
+  return empty(
+    "영어를 숨기고 있어요.",
+    "단어장에서는 한국어 뜻만 볼 수 있어요. 문제를 풀려면 영어 표시를 켜 주세요.",
+    '<div class="empty-actions"><button class="btn primary" data-action="show-english">영어 표시하고 학습하기</button><a class="btn" href="#words">한국어 뜻 살펴보기</a></div>',
+  );
+}
 function badge(s) {
   return `<span class="badge">${LEVELS[s.level]}</span>`;
 }
@@ -145,6 +168,7 @@ function render() {
           ? words()
           : settings();
   if (route === "words") renderList();
+  renderLanguage();
 }
 function heading(title, sub, extra = "") {
   return `<div class="heading"><div><h1>${title}</h1><p class="sub">${sub}</p></div>${extra}</div>`;
@@ -173,12 +197,13 @@ function home() {
   }).join("");
   return `<div class="heading"><div><p class="date-label">${date}</p><h1>오늘도, 한 단어 더.</h1><p class="sub">쉬운 영어로 이해하고, 내 표현으로 기억해요.</p></div><span class="pill">${icon("leaf")} ${streak}일의 작은 습관</span></div>
  ${session && !session.complete ? `<div class="resume-banner"><span>학습 중인 ${session.queue.length - session.index}문제가 있어요.</span><a class="btn small" href="#learn">이어하기 ${icon("arrow")}</a></div>` : ""}
- <section class="hero"><div><div class="eyebrow">YOUR DAILY WORDLOOP</div><h2>${goalDone ? "오늘의 목표를<br>모두 채웠어요." : "작은 반복이 만드는<br>커다란 자신감."}</h2><p>${goalDone ? "차곡차곡 쌓인 오늘의 한 걸음." : "오늘의 단어를 나만의 속도로 익혀 보세요."}</p><button class="btn dark" data-action="start" data-mode="daily">${session && !session.complete ? "오늘 학습 이어하기" : p.fresh.length + p.review.length ? "오늘 학습 시작하기" : "더 공부하기"} ${icon("arrow")}</button></div><div class="hero-decor" aria-hidden="true"><div class="floating-word"><small>little by little</small><strong>grow.</strong><small>to become better, every day</small></div><span class="floating-tag">한 단어씩, 차곡차곡 ✓</span></div></section>
+ <section class="hero"><div><div class="eyebrow">${uiText("YOUR DAILY WORDLOOP", "매일 쌓아가는 나의 단어")}</div><h2>${goalDone ? "오늘의 목표를<br>모두 채웠어요." : "작은 반복이 만드는<br>커다란 자신감."}</h2><p>${goalDone ? "차곡차곡 쌓인 오늘의 한 걸음." : "오늘의 단어를 나만의 속도로 익혀 보세요."}</p><button class="btn dark" data-action="start" data-mode="daily">${session && !session.complete ? "오늘 학습 이어하기" : p.fresh.length + p.review.length ? "오늘 학습 시작하기" : "더 공부하기"} ${icon("arrow")}</button></div><div class="hero-decor" aria-hidden="true"><div class="floating-word"><small>${uiText("little by little", "조금씩, 꾸준히")}</small><strong>${uiText("grow.", "성장.")}</strong><small>${uiText("to become better, every day", "매일 조금 더 나아지는 나")}</small></div><span class="floating-tag">한 단어씩, 차곡차곡 ✓</span></div></section>
  <div class="progress-grid">${progressCard("오늘 새 단어", d.newWords.length, state.settings.dailyNew, "spark")}${progressCard("오늘 복습", d.reviews.length, state.settings.dailyReview, "repeat")}</div>
  <div class="section-title"><h2>조금 더 단단하게</h2><a href="#learn">학습 전체 보기 →</a></div><div class="quick-grid"><button class="quick-card" data-action="start" data-mode="mistakes"><span class="icon-box coral">${icon("repeat")}</span><span><strong>틀린 문제 다시 풀기</strong><small>${p.mistakes.length ? p.mistakes.length + "개의 뜻이 기다려요" : "아직 틀린 문제가 없어요"}</small></span>${icon("chevron")}</button><button class="quick-card" data-action="show-favorites"><span class="icon-box">${icon("star")}</span><span><strong>내가 모아둔 단어</strong><small>즐겨찾기 ${all.filter((s) => state.favorites.includes(s.id)).length}개</small></span>${icon("chevron")}</button></div>
  <div class="lower-grid"><section class="panel"><h3>일주일의 작은 발자국</h3><div class="week">${week}</div></section><section class="panel"><h3>내 안에 쌓이는 영어</h3><div class="vocab-total"><div><strong>${known}</strong><span>만나본 단어</span></div><div><strong>${Object.values(state.progress).filter((p) => p.streak >= 3).length}</strong><span>3일 이상 맞힌 뜻</span></div><div><strong>${countWords(all).toLocaleString()}</strong><span>전체 단어</span></div></div></section></div>`;
 }
 function learn() {
+  if (state.settings.hideEnglish) return englishHidden();
   if (session) {
     if (session.complete) return results();
     return quiz();
@@ -214,6 +239,11 @@ function prepareQuestion() {
   session.phase = item.kind === "new" && !item.retry ? "learn" : "quiz";
 }
 async function start(mode, ids) {
+  if (state.settings.hideEnglish) {
+    location.hash = "learn";
+    render();
+    return;
+  }
   if (session && !session.complete && !ids && mode === "daily") {
     location.hash = "learn";
     return;
@@ -296,7 +326,7 @@ function quiz() {
     s = q.sense,
     item = session.queue[session.index],
     isLearning = session.phase === "learn";
-  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${isLearning ? "새 단어 익히기" : item.retry ? "한 번 더 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(s.pos)}</span>${item.retry ? "<span>예문을 바꿔 다시 만났어요</span>" : ""}</div>
+  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${isLearning ? "새 단어 익히기" : item.retry ? "한 번 더 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(state.settings.hideEnglish ? { noun: "명사", verb: "동사", adjective: "형용사", adverb: "부사", other: "기타" }[s.pos] || "기타" : s.pos)}</span>${item.retry ? "<span>예문을 바꿔 다시 만났어요</span>" : ""}</div>
  <article class="word-card"><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button>${isLearning || q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}${isLearning ? `<p class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</p>` : ""}<p class="sentence">${example(s, q.exampleIndex, !isLearning && q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button></article>
  ${
    isLearning
@@ -344,7 +374,7 @@ async function answer(id, self) {
   });
 }
 function results() {
-  return `<section class="result"><div class="result-mark">${icon("check")}</div><div class="eyebrow">ONE LOOP CLOSER</div><h1>오늘의 반복이 쌓였어요.</h1><p class="sub">조금씩 익숙해지는 영어.<br>다음 복습에서 다시 만나요.</p><div class="result-stats"><div><strong>${session.initial}</strong><span>학습한 뜻</span></div><div><strong>${session.attempts}</strong><span>재도전 포함 응답</span></div><div><strong>${Math.round((session.correct / session.attempts) * 100)}%</strong><span>전체 응답 정답률</span></div></div>${session.wrongIds.length ? `<button class="btn primary wide" data-action="retry-session">헷갈린 ${session.wrongIds.length}개 다시 풀기 ${icon("repeat")}</button>` : ""}<button class="btn ${session.wrongIds.length ? "" : "primary"} wide" data-action="finish">홈으로 돌아가기 ${icon("arrow")}</button><p class="saved-note">학습 기록을 이 기기에 저장했어요.</p></section>`;
+  return `<section class="result"><div class="result-mark">${icon("check")}</div><div class="eyebrow">${uiText("ONE LOOP CLOSER", "한 걸음 더 가까이")}</div><h1>오늘의 반복이 쌓였어요.</h1><p class="sub">조금씩 익숙해지는 영어.<br>다음 복습에서 다시 만나요.</p><div class="result-stats"><div><strong>${session.initial}</strong><span>학습한 뜻</span></div><div><strong>${session.attempts}</strong><span>재도전 포함 응답</span></div><div><strong>${Math.round((session.correct / session.attempts) * 100)}%</strong><span>전체 응답 정답률</span></div></div>${session.wrongIds.length ? `<button class="btn primary wide" data-action="retry-session">헷갈린 ${session.wrongIds.length}개 다시 풀기 ${icon("repeat")}</button>` : ""}<button class="btn ${session.wrongIds.length ? "" : "primary"} wide" data-action="finish">홈으로 돌아가기 ${icon("arrow")}</button><p class="saved-note">학습 기록을 이 기기에 저장했어요.</p></section>`;
 }
 function words() {
   return (
@@ -353,7 +383,7 @@ function words() {
       "단어의 뜻을 하나씩, 차곡차곡.",
       `<button class="btn small" data-action="add-word">${icon("plus")} 추가</button>`,
     ) +
-    `<div class="toolbar"><label class="search">${icon("search")}<input id="word-search" type="search" placeholder="단어, 뜻 검색" aria-label="단어, 뜻 검색" value="${escape(filters.query)}"></label><select id="word-level" aria-label="난이도 필터"><option value="all">모든 난이도</option>${Object.entries(
+    `<div class="toolbar"><label class="search">${icon("search")}<input id="word-search" type="search" placeholder="${state.settings.hideEnglish ? "한국어 뜻 검색" : "단어, 뜻 검색"}" aria-label="단어, 뜻 검색" value="${escape(filters.query)}"></label><select id="word-level" aria-label="난이도 필터"><option value="all">모든 난이도</option>${Object.entries(
       LEVELS,
     )
       .map(
@@ -409,7 +439,7 @@ function renderList() {
             .slice(0, pageSize)
             .map((s) => {
               const p = state.progress[s.id];
-              return `<div class="word-row">${showSelect ? `<input class="check-word" type="checkbox" data-select="${s.id}" aria-label="${escape(s.word + " " + s.ko)} 선택" ${selected.has(s.id) ? "checked" : ""}>` : ""}<button class="word-open" data-action="word-detail" data-id="${s.id}"><strong>${escape(s.word)}</strong>${badge(s)} ${p?.mistake === "active" ? '<span class="status mistake">복습 필요</span>' : p?.mistake === "resolved" ? '<span class="status">해결됨</span>' : ""}<p>${escape(s.definitions[0])}</p></button><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="${escape(s.word)} 즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button></div>`;
+              return `<div class="word-row">${showSelect ? `<input class="check-word" type="checkbox" data-select="${s.id}" aria-label="${wordLabel(s)} 선택" ${selected.has(s.id) ? "checked" : ""}>` : ""}<button class="word-open" data-action="word-detail" data-id="${s.id}"><strong>${wordLabel(s)}</strong>${badge(s)} ${p?.mistake === "active" ? '<span class="status mistake">복습 필요</span>' : p?.mistake === "resolved" ? '<span class="status">해결됨</span>' : ""}<p>${state.settings.hideEnglish ? "영어 단어와 설명을 숨겼어요" : escape(s.definitions[0])}</p></button><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="${wordLabel(s)} 즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button></div>`;
             })
             .join(
               "",
@@ -423,10 +453,11 @@ function renderList() {
 function settings() {
   const st = state.settings;
   const row = (label, desc, control) =>
-    `<div class="setting-row"><div class="setting-label"><span>${label}</span><p class="description">${desc}</p></div>${control}</div>`;
+    `<div class="setting-row"><div class="setting-label"><span>${label}</span><p class="description">${desc}</p></div><div class="setting-control">${control}</div></div>`;
   return (
     heading("나에게 맞는 학습", "작은 목표부터, 편안하게 시작하세요.") +
-    `<section class="setting-section"><h2>하루의 목표</h2>${row("새 단어", "같은 단어의 여러 뜻은 새 단어 1개로 세어요.", `<div><input class="input" id="daily-new" aria-label="하루 새 단어 수" type="number" min="1" max="50" value="${st.dailyNew}" data-setting="dailyNew"><span class="unit">개 / 하루</span></div>`)}${row("복습 문제", "그날 처음 복습한 뜻만 세어요. 반복 오답은 중복하지 않아요.", `<div><input class="input" id="daily-review" aria-label="하루 복습 문제 수" type="number" min="1" max="100" value="${st.dailyReview}" data-setting="dailyReview"><span class="unit">개 / 하루</span></div>`)}</section>
+    `<section class="setting-section"><h2>하루의 목표</h2>${row("새 단어", "같은 단어의 여러 뜻은 새 단어 1개로 세어요.", `<div><input class="input" id="daily-new" aria-label="하루 새 단어 수" type="number" min="1" max="${MAX_DAILY_GOAL}" value="${st.dailyNew}" data-setting="dailyNew"><span class="unit">개 / 하루</span></div>`)}${row("복습 문제", "그날 처음 복습한 뜻만 세어요. 반복 오답은 중복하지 않아요.", `<div><input class="input" id="daily-review" aria-label="하루 복습 문제 수" type="number" min="1" max="${MAX_DAILY_GOAL}" value="${st.dailyReview}" data-setting="dailyReview"><span class="unit">개 / 하루</span></div>`)}</section>
+ <section class="setting-section"><h2>화면 표시</h2>${row("영어 숨기기", "앱 문구는 한글로, 단어장은 한국어 뜻만 보여요. 문제 풀이는 영어 표시를 다시 켜면 이어갈 수 있어요.", `<label class="switch"><input type="checkbox" aria-label="영어 숨기기" data-setting="hideEnglish" ${st.hideEnglish ? "checked" : ""}><span></span></label>`)}</section>
  <section class="setting-section"><h2>단어와 문제</h2>${row(
    "학습 난이도",
    "새로운 단어와 뜻을 만날 수준을 선택해요.",
@@ -451,8 +482,8 @@ function settings() {
      .join("")}</select>`,
  )}</section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
- <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.0.0 · 학습 기록은 이 기기에만 저장됩니다.</p></section>`
+ <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${state.settings.hideEnglish ? "최신 저장본" : escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">${uiText("Wordloop", "워드루프")} 1.1.0 · 학습 기록은 이 기기에만 저장됩니다.</p></section>`
   );
 }
 function showDialog(html) {
@@ -468,10 +499,16 @@ function detail(id) {
   if (!s) return;
   const p = state.progress[id];
   showDialog(
-    `<div class="dialog-header"><span>${badge(s)} · ${escape(s.pos)}</span><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><h2 class="word">${escape(s.word)}</h2><p class="definition">${escape(s.definitions[0])}</p>${s.examples.map((_, i) => `<p class="example sentence">${example(s, i)}</p>`).join("")}<details><summary class="hint">한국어 뜻 보기</summary><p>${escape(s.ko)}</p></details>${p ? `<p class="content-version">정답 ${p.right}회 · 오답 ${p.wrong}회<br>다음 복습: ${new Date(p.due).toLocaleDateString("ko-KR")}${p.mistake === "active" ? ` · 해결까지 ${p.resolvedDates.length}/${state.settings.resolveDays}일` : ""}</p>` : ""}<div class="actions"><button class="btn primary" data-action="practice-one" data-id="${id}">이 뜻 학습하기 ${icon("arrow")}</button>${id.startsWith("custom-") ? `<button class="btn" data-action="edit-word" data-id="${id}">수정</button><button class="btn danger" data-action="delete-word" data-id="${id}">삭제</button>` : ""}</div>`,
+    `<div class="dialog-header"><span>${badge(s)} · ${escape(state.settings.hideEnglish ? { noun: "명사", verb: "동사", adjective: "형용사", adverb: "부사", other: "기타" }[s.pos] || "기타" : s.pos)}</span><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><h2 class="word">${wordLabel(s)}</h2>${state.settings.hideEnglish ? `<p class="notice">영어 단어·뜻·예문을 숨겼어요.</p>` : `<p class="definition">${escape(s.definitions[0])}</p>${s.examples.map((_, i) => `<p class="example sentence">${example(s, i)}</p>`).join("")}<details><summary class="hint">한국어 뜻 보기</summary><p>${escape(s.ko)}</p></details>`}${p ? `<p class="content-version">정답 ${p.right}회 · 오답 ${p.wrong}회<br>다음 복습: ${new Date(p.due).toLocaleDateString("ko-KR")}${p.mistake === "active" ? ` · 해결까지 ${p.resolvedDates.length}/${state.settings.resolveDays}일` : ""}</p>` : ""}<div class="actions"><button class="btn primary" data-action="practice-one" data-id="${id}">이 뜻 학습하기 ${icon("arrow")}</button>${id.startsWith("custom-") ? `<button class="btn" data-action="edit-word" data-id="${id}">수정</button><button class="btn danger" data-action="delete-word" data-id="${id}">삭제</button>` : ""}</div>`,
   );
 }
 function wordForm(id) {
+  if (state.settings.hideEnglish) {
+    showDialog(
+      `<div class="dialog-header"><h2>영어 표시가 필요해요</h2><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><p class="sub">단어를 추가하거나 수정하려면 영어 표시를 켜 주세요. 저장한 단어는 그대로 유지돼요.</p><div class="actions"><button class="btn primary" data-action="show-english" data-form="true" data-id="${id || ""}">영어 표시하고 계속하기</button></div>`,
+    );
+    return;
+  }
   const s = byId.get(id) || {
     word: "",
     ko: "",
@@ -643,9 +680,7 @@ async function importBackup(file) {
     toast("백업을 불러왔어요.");
   } catch (e) {
     toast(
-      e instanceof SyntaxError
-        ? "올바른 JSON 백업 파일이 아니에요."
-        : e.message,
+      e instanceof SyntaxError ? "올바른 백업 파일이 아니에요." : e.message,
     );
   }
 }
@@ -656,7 +691,7 @@ async function install() {
     installPrompt = null;
   } else {
     showDialog(
-      `<div class="dialog-header"><h2>홈 화면에 Wordloop</h2><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><p class="sub">안드로이드 Chrome: 메뉴(⋮) → <b>앱 설치</b> 또는 <b>홈 화면에 추가</b><br><br>아이폰 Safari: 공유 → <b>홈 화면에 추가</b></p><p class="notice">이미 설치했다면 홈 화면의 Wordloop 아이콘으로 열어 주세요. 첫 실행과 단어장 업데이트에는 인터넷 연결이 필요해요.</p>`,
+      `<div class="dialog-header"><h2>홈 화면에 워드루프</h2><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><p class="sub">안드로이드 크롬: 메뉴(⋮) → <b>앱 설치</b> 또는 <b>홈 화면에 추가</b><br><br>아이폰 사파리: 공유 → <b>홈 화면에 추가</b></p><p class="notice">이미 설치했다면 홈 화면의 워드루프 아이콘으로 열어 주세요. 첫 실행과 단어장 업데이트에는 인터넷 연결이 필요해요.</p>`,
     );
   }
 }
@@ -692,7 +727,13 @@ document.addEventListener("click", async (e) => {
   const a = b.dataset.action,
     id = b.dataset.id;
   if (a === "start") await start(b.dataset.mode);
-  else if (a === "favorite") {
+  else if (a === "show-english") {
+    const reopenForm = b.dataset.form === "true";
+    if (await mutation(() => (state.settings.hideEnglish = false))) {
+      closeDialog();
+      if (reopenForm) wordForm(id);
+    }
+  } else if (a === "favorite") {
     await mutation(() => {
       state.favorites = state.favorites.includes(id)
         ? state.favorites.filter((x) => x !== id)
@@ -789,6 +830,8 @@ document.addEventListener("click", async (e) => {
 });
 document.addEventListener("input", (e) => {
   if (e.target.id === "word-search") {
+    if (state.settings.hideEnglish)
+      e.target.value = e.target.value.replace(/[A-Za-z]+/g, "");
     filters.query = e.target.value;
     pageSize = 40;
     selected.clear();
@@ -826,7 +869,7 @@ document.addEventListener("change", async (e) => {
     let value = el.type === "checkbox" ? el.checked : el.value;
     if (["dailyNew", "dailyReview", "resolveDays"].includes(key)) {
       value = Number(value);
-      const max = key === "dailyNew" ? 50 : key === "dailyReview" ? 100 : 5;
+      const max = key === "resolveDays" ? 5 : MAX_DAILY_GOAL;
       if (!Number.isInteger(value) || value < 1 || value > max) {
         el.value = state.settings[key];
         toast(`1~${max} 사이의 정수를 입력해 주세요.`);
@@ -835,6 +878,7 @@ document.addEventListener("change", async (e) => {
     }
     await mutation(() => {
       state.settings[key] = value;
+      if (key === "hideEnglish") filters.query = "";
       if (key === "resolveDays")
         for (const p of Object.values(state.progress))
           if (p.mistake === "active" && p.resolvedDates.length >= value)
@@ -896,6 +940,10 @@ async function boot() {
     ]);
     if (saved) {
       state = saved.state;
+      state.settings = {
+        ...structuredClone(DEFAULT_SETTINGS),
+        ...state.settings,
+      };
       session = saved.session;
       lastQuestions = saved.lastQuestions || {};
     }
@@ -916,7 +964,7 @@ async function boot() {
               navigator.serviceWorker.controller
             )
               toast(
-                "앱 업데이트가 준비됐어요. 모든 Wordloop 창을 닫고 다시 열면 적용돼요.",
+                "앱 업데이트가 준비됐어요. 모든 워드루프 창을 닫고 다시 열면 적용돼요.",
               );
           });
         });
@@ -946,8 +994,8 @@ if (navigator.locks)
     async (lock) => {
       if (!lock) {
         $("#main").innerHTML = empty(
-          "다른 창에서 Wordloop를 사용 중이에요.",
-          "다른 Wordloop 창을 닫은 뒤 이 창을 새로고침해 주세요.",
+          "다른 창에서 워드루프를 사용 중이에요.",
+          "다른 워드루프 창을 닫은 뒤 이 창을 새로고침해 주세요.",
           '<button class="btn primary" onclick="location.reload()">다시 열기</button>',
         );
         return;

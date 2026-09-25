@@ -3,6 +3,7 @@ export const LEVELS = {
   intermediate: "중급",
   advanced: "고급",
 };
+export const MAX_DAILY_GOAL = 300;
 export const DEFAULT_SETTINGS = Object.freeze({
   dailyNew: 10,
   dailyReview: 20,
@@ -10,6 +11,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mode: "mixed",
   autoMistakes: true,
   resolveDays: 2,
+  hideEnglish: false,
 });
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -257,7 +259,7 @@ export function validateBackup(input) {
     !input.state ||
     input.state.schema !== 1
   )
-    throw new Error("Wordloop 백업 파일이 아니에요.");
+    throw new Error("워드루프 백업 파일이 아니에요.");
   const s = input.state;
   const isObject = (o) => o && typeof o === "object" && !Array.isArray(o);
   if (
@@ -269,8 +271,8 @@ export function validateBackup(input) {
   )
     throw new Error("백업 구조가 올바르지 않아요.");
   for (const [k, lo, hi] of [
-    ["dailyNew", 1, 50],
-    ["dailyReview", 1, 100],
+    ["dailyNew", 1, MAX_DAILY_GOAL],
+    ["dailyReview", 1, MAX_DAILY_GOAL],
     ["resolveDays", 1, 5],
   ])
     if (
@@ -284,7 +286,9 @@ export function validateBackup(input) {
     !s.settings.levels.length ||
     s.settings.levels.some((l) => !Object.hasOwn(LEVELS, l)) ||
     !["mixed", "meaning", "word"].includes(s.settings.mode) ||
-    typeof s.settings.autoMistakes !== "boolean"
+    typeof s.settings.autoMistakes !== "boolean" ||
+    (Object.hasOwn(s.settings, "hideEnglish") &&
+      typeof s.settings.hideEnglish !== "boolean")
   )
     throw new Error("백업의 학습 설정을 확인해 주세요.");
   const idOK = (x) =>
@@ -363,5 +367,6 @@ export function validateBackup(input) {
   const clean = emptyState();
   for (const k of Object.keys(clean))
     if (Object.hasOwn(s, k)) clean[k] = structuredClone(s[k]);
+  clean.settings = { ...structuredClone(DEFAULT_SETTINGS), ...clean.settings };
   return clean;
 }
