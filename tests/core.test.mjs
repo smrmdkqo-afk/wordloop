@@ -24,10 +24,37 @@ const bookVerb = senses.find(
   (s) => s.word === "book" && s.level === "intermediate" && s.pos === "verb",
 );
 const borrow = senses.find((s) => s.word === "borrow");
-test("catalog contains 1,000+ unique words, 1,200 meanings and two examples each", () => {
-  assert(new Set(senses.map((s) => s.word)).size >= 1000);
-  assert(senses.length >= 1200);
+test("catalog contains 4,062+ unique words, 4,200 meanings and two examples each", () => {
+  assert(new Set(senses.map((s) => s.word)).size >= 4062);
+  assert(senses.length >= 4200);
   assert(senses.every((s) => s.examples.length >= 2));
+});
+test("September expansion adds 3,000 distinct words without replacing existing senses", () => {
+  const added = senses.filter((s) => s.id.endsWith("-exp-202609"));
+  const previous = senses.filter((s) => !s.id.endsWith("-exp-202609"));
+  const known = new Set(previous.map((s) => s.word.toLowerCase()));
+  assert.equal(added.length, 3000);
+  assert.equal(new Set(added.map((s) => s.word.toLowerCase())).size, 3000);
+  assert(previous.length >= 1200);
+  for (const s of added) {
+    assert(!known.has(s.word.toLowerCase()), s.word);
+    assert(s.examples.length >= 2, s.id);
+    assert.equal(new Set(s.examples).size, s.examples.length, s.id);
+    assert(
+      s.examples.every((e) => e.split("{}").length === 2),
+      s.id,
+    );
+    assert(s.distractors.length >= 4, s.id);
+    assert(/[가-힣]/.test(s.ko), s.id);
+    assert(s.source, s.id);
+    for (const id of s.distractors) {
+      const distractor = byId.get(id);
+      assert(distractor, id);
+      assert.equal(distractor.pos, s.pos, s.id);
+      assert.notEqual(distractor.word, s.word, s.id);
+      assert.notEqual(distractor.definitions[0], s.definitions[0], s.id);
+    }
+  }
 });
 test("all catalog questions have four unique choices and retain their answer when varied", () => {
   for (const sense of senses)

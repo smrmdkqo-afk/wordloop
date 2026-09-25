@@ -57,6 +57,7 @@ try {
       await write("snapshot", snapshot);
     });
   await page.getByRole("link", { name: "설정", exact: true }).click();
+  await page.getByText("4,062단어 · 4,200개의 뜻", { exact: true }).waitFor();
   for (const name of ["하루 새 단어 수", "하루 복습 문제 수"]) {
     const input = page.getByLabel(name, { exact: true });
     assert.equal(await input.getAttribute("max"), "300");
@@ -154,14 +155,17 @@ try {
   await page.getByRole("button", { name: "저장하기", exact: true }).click();
   await page.getByText("내 단어장에 저장했어요.", { exact: true }).waitFor();
   await page.getByRole("searchbox").fill("persist");
-  assert.equal(await page.locator(".word-row").count(), 1);
+  const customWordRow = page.locator(".word-row").filter({
+    has: page.locator(".word-open strong").filter({ hasText: /^persist$/ }),
+  });
+  assert.equal(await customWordRow.count(), 1);
   await page
     .getByRole("button", { name: "persist 즐겨찾기", exact: true })
     .click();
   await page
     .locator('[aria-label="persist 즐겨찾기"][aria-pressed=true]')
     .waitFor();
-  await page.locator(".word-open").click();
+  await customWordRow.locator(".word-open").click();
   await page.getByRole("button", { name: "이 뜻 학습하기" }).click();
   await page.getByRole("button", { name: "이제 문제로 확인하기" }).click();
   await page.getByRole("button", { name: "정답 보기", exact: true }).click();
@@ -233,7 +237,7 @@ try {
   );
   await page.getByRole("link", { name: "단어장", exact: true }).click();
   await page.getByRole("searchbox").fill("persist");
-  assert.equal(await page.locator(".word-row").count(), 1);
+  assert.equal(await customWordRow.count(), 1);
   await context.setOffline(false);
   // A fresh browser context simulates restoring onto a new device.
   const restored = await browser.newContext({

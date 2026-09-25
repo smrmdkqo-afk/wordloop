@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "version": "1-325bb8beeb",
-  "words": 1062,
-  "senses": 1200,
-  "examples": 2400,
+  "version": "1-923d9b0cae",
+  "words": 4062,
+  "senses": 4200,
+  "examples": 8400,
   "files": [
     {
       "path": "data/advanced.json",
@@ -12,6 +12,18 @@
     {
       "path": "data/beginner.json",
       "sha256": "d8cb64afdbf763d4b3c220f740cc57356dc5266d15c4903dced19963e340da7f"
+    },
+    {
+      "path": "data/expansion-advanced.json",
+      "sha256": "54b5af1b0501300e9330a193e7a6feee625ee29d7ccc761c35481e765cc91615"
+    },
+    {
+      "path": "data/expansion-beginner.json",
+      "sha256": "acc6a4a0b1d4cc3eaf995d3231c8da4c7836ada8a70e0a0d6054ebf93a806dd5"
+    },
+    {
+      "path": "data/expansion-intermediate.json",
+      "sha256": "4a70ea40719fc6f05cd39c7e40bd2237c5a024318c7837e84f34e10e1485adb4"
     },
     {
       "path": "data/intermediate.json",
