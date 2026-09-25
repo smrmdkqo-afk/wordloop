@@ -132,18 +132,21 @@ try {
   await page.getByRole("button", { name: "이제 문제로 확인하기" }).click();
   const id = await page.locator(".word-card .favorite").getAttribute("data-id");
   await page.locator(`.answer:not([data-id="${id}"])`).first().click();
-  await visible(page, "button", "다음 문제");
+  await visible(page, "button", "학습 결과 보기");
   await page.reload();
-  await visible(page, "button", "다음 문제");
+  await visible(page, "button", "학습 결과 보기");
   assert.equal(await page.locator(".answer.wrong").count(), 1);
   await page.screenshot({
     path: "test-results/quiz-mobile.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "다음 문제", exact: true }).click();
-  await page.locator(`.answer[data-id="${id}"]`).click();
+  assert.match(await page.locator(".quiz-count").innerText(), /1 \/ 1$/);
   await page.getByRole("button", { name: "학습 결과 보기" }).click();
   await visible(page, "heading", "오늘의 반복이 쌓였어요.");
+  await page.getByRole("button", { name: "헷갈린 1개 다시 풀기" }).click();
+  assert.match(await page.locator(".quiz-count").innerText(), /1 \/ 1$/);
+  await page.locator(`.answer[data-id="${id}"]`).click();
+  await page.getByRole("button", { name: "학습 결과 보기" }).click();
   await page.getByRole("button", { name: "홈으로 돌아가기" }).click();
   await page.getByRole("link", { name: "단어장", exact: true }).click();
   await page.getByRole("button", { name: "틀린 문제", exact: true }).click();
@@ -301,9 +304,122 @@ try {
     path: "test-results/home-desktop.png",
     fullPage: true,
   });
+  // Wrong answers never extend a ten-question lesson, including after a reload.
+  const fixedContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  contexts.push(fixedContext);
+  const fixedPage = await fixedContext.newPage();
+  fixedPage.on("pageerror", (e) => errors.push(e.message));
+  await fixedPage.goto(base);
+  await fixedPage.getByRole("button", { name: "오늘 학습 시작하기" }).click();
+  const originalIds = [];
+  for (let i = 1; i <= 10; i++) {
+    await fixedPage
+      .getByRole("button", { name: "이제 문제로 확인하기" })
+      .click();
+    const currentId = await fixedPage
+      .locator(".word-card .favorite")
+      .getAttribute("data-id");
+    originalIds.push(currentId);
+    await fixedPage
+      .locator(`.answer:not([data-id="${currentId}"])`)
+      .first()
+      .click();
+    await visible(
+      fixedPage,
+      "button",
+      i === 10 ? "학습 결과 보기" : "다음 문제",
+    );
+    assert.match(
+      await fixedPage.locator(".quiz-count").innerText(),
+      new RegExp(`${i} / 10$`),
+    );
+    if (i === 4) {
+      // Simulate the queued retries left behind by the previous app version.
+      await fixedPage.evaluate(async () => {
+        const { read, write } = await import("/src/storage.js");
+        const snapshot = await read("snapshot");
+        snapshot.session.queue.push({
+          id: snapshot.session.queue[0].id,
+          kind: "review",
+          retry: true,
+        });
+        await write("snapshot", snapshot);
+      });
+      await fixedPage.reload();
+      await visible(fixedPage, "button", "다음 문제");
+      assert.match(
+        await fixedPage.locator(".quiz-count").innerText(),
+        /4 \/ 10$/,
+      );
+      assert.equal(await fixedPage.locator(".answer.wrong").count(), 1);
+    }
+    await fixedPage
+      .getByRole("button", {
+        name: i === 10 ? "학습 결과 보기" : "다음 문제",
+        exact: true,
+      })
+      .click();
+  }
+  await visible(fixedPage, "heading", "오늘의 반복이 쌓였어요.");
+  assert.equal(new Set(originalIds).size, 10);
+  assert.deepEqual(
+    await fixedPage.locator(".result-stats strong").allTextContents(),
+    ["10", "10", "0%"],
+  );
+  await fixedPage
+    .getByRole("button", { name: "헷갈린 10개 다시 풀기" })
+    .click();
+  for (let i = 1; i <= 10; i++) {
+    await fixedPage.waitForFunction(
+      (expected) =>
+        document.querySelector(".quiz-count strong")?.textContent ===
+        String(expected),
+      i,
+    );
+    const currentId = await fixedPage
+      .locator(".word-card .favorite")
+      .getAttribute("data-id");
+    assert(originalIds.includes(currentId));
+    await fixedPage
+      .locator(`.answer:not([data-id="${currentId}"])`)
+      .first()
+      .click();
+    await visible(
+      fixedPage,
+      "button",
+      i === 10 ? "학습 결과 보기" : "다음 문제",
+    );
+    assert.match(
+      await fixedPage.locator(".quiz-count").innerText(),
+      new RegExp(`${i} / 10$`),
+    );
+    await fixedPage
+      .getByRole("button", {
+        name: i === 10 ? "학습 결과 보기" : "다음 문제",
+        exact: true,
+      })
+      .click();
+  }
+  await visible(fixedPage, "heading", "오늘의 반복이 쌓였어요.");
+  assert.deepEqual(
+    await fixedPage.locator(".result-stats strong").allTextContents(),
+    ["10", "10", "0%"],
+  );
+  const fixedSnapshot = await fixedPage.evaluate(async () =>
+    (await import("/src/storage.js")).read("snapshot"),
+  );
+  assert.equal(Object.keys(fixedSnapshot.state.progress).length, 10);
+  assert(
+    Object.values(fixedSnapshot.state.progress).every(
+      (p) => p.mistake === "active",
+    ),
+  );
+  assert.equal(Object.values(fixedSnapshot.state.days)[0].newWords.length, 10);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: 300-item goals, English hiding and persistence, compact navigation, lesson/retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
+    "PASS: 300-item goals, English hiding and persistence, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
   );
 } finally {
   await Promise.all(contexts.map((c) => c.close()));

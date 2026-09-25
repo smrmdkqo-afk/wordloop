@@ -97,6 +97,29 @@ export function shuffle(values, random = Math.random) {
   }
   return a;
 }
+// Keep an in-progress session's original questions when upgrading from auto-retry.
+export function removeAutomaticRetries(session) {
+  if (!session || session.complete || !session.queue.some((item) => item.retry))
+    return false;
+  const current = session.queue[session.index];
+  const answeredOriginal = !current?.retry && session.answered;
+  const index = session.queue
+    .slice(0, session.index)
+    .filter((item) => !item.retry).length;
+  session.queue = session.queue.filter((item) => !item.retry);
+  session.index = index;
+  session.initial = session.queue.length;
+  // Only first attempts belong to this fixed-size session. The full learning
+  // history already saved in state.progress/state.days remains untouched.
+  session.attempts = index + (answeredOriginal ? 1 : 0);
+  session.correct = Math.max(0, session.attempts - session.wrongIds.length);
+  session.complete = index >= session.queue.length;
+  if (current?.retry) {
+    session.question = null;
+    session.answered = false;
+  }
+  return true;
+}
 export function makeQuestion(
   sense,
   byId,

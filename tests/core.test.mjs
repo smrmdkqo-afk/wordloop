@@ -10,6 +10,7 @@ import {
   makeQuestion,
   validateBackup,
   activeStreak,
+  removeAutomaticRetries,
 } from "../src/core.js";
 process.env.TZ = "Asia/Seoul";
 const at = (d) => new Date(`2026-09-${d}T10:00:00+09:00`).getTime();
@@ -218,4 +219,85 @@ test("old backups default to showing English without losing learning history", (
   assert.equal(restored.settings.hideEnglish, false);
   assert.deepEqual(restored.progress, s.progress);
   assert.deepEqual(restored.days, s.days);
+});
+test("upgrading a session removes retries and preserves an answered original question", () => {
+  const question = { sense: { id: "b" } };
+  const session = {
+    queue: [
+      { id: "a" },
+      { id: "a", retry: true },
+      { id: "b" },
+      { id: "c" },
+      { id: "b", retry: true },
+    ],
+    index: 2,
+    initial: 3,
+    attempts: 3,
+    correct: 1,
+    wrongIds: ["a", "b"],
+    answered: true,
+    choice: "c",
+    question,
+    complete: false,
+  };
+  assert.equal(removeAutomaticRetries(session), true);
+  assert.deepEqual(
+    session.queue.map((item) => item.id),
+    ["a", "b", "c"],
+  );
+  assert.equal(session.index, 1);
+  assert.equal(session.initial, 3);
+  assert.equal(session.attempts, 2);
+  assert.equal(session.correct, 0);
+  assert.equal(session.question, question);
+  assert.equal(session.choice, "c");
+  assert.equal(session.answered, true);
+  const saved = structuredClone(session);
+  assert.equal(removeAutomaticRetries(session), false);
+  assert.deepEqual(session, saved);
+});
+test("upgrading at an automatic retry advances to the next original question", () => {
+  const session = {
+    queue: [{ id: "a" }, { id: "a", retry: true }, { id: "b" }],
+    index: 1,
+    initial: 2,
+    attempts: 1,
+    correct: 0,
+    wrongIds: ["a"],
+    answered: false,
+    question: { sense: { id: "a" } },
+    complete: false,
+  };
+  removeAutomaticRetries(session);
+  assert.equal(session.index, 1);
+  assert.equal(session.queue[session.index].id, "b");
+  assert.equal(session.question, null);
+  assert.equal(session.answered, false);
+  assert.equal(session.complete, false);
+  assert.equal(session.attempts, 1);
+});
+test("upgrading finishes a session when only automatic retries remain", () => {
+  const session = {
+    queue: [
+      { id: "a" },
+      { id: "b" },
+      { id: "a", retry: true },
+      { id: "b", retry: true },
+    ],
+    index: 3,
+    initial: 2,
+    attempts: 4,
+    correct: 2,
+    wrongIds: ["a", "b"],
+    answered: true,
+    question: { sense: { id: "b" } },
+    complete: false,
+  };
+  removeAutomaticRetries(session);
+  assert.equal(session.complete, true);
+  assert.equal(session.index, 2);
+  assert.equal(session.attempts, 2);
+  assert.equal(session.correct, 0);
+  assert.deepEqual(session.wrongIds, ["a", "b"]);
+  assert.equal(removeAutomaticRetries(null), false);
 });

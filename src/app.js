@@ -9,6 +9,7 @@ import {
   knownWords,
   makeQuestion,
   recordAnswer,
+  removeAutomaticRetries,
   activeStreak,
   validateBackup,
   shuffle,
@@ -236,7 +237,7 @@ function prepareQuestion() {
   session.choice = null;
   session.revealed = false;
   session.showHint = false;
-  session.phase = item.kind === "new" && !item.retry ? "learn" : "quiz";
+  session.phase = item.kind === "new" ? "learn" : "quiz";
 }
 async function start(mode, ids) {
   if (state.settings.hideEnglish) {
@@ -324,9 +325,8 @@ async function start(mode, ids) {
 function quiz() {
   const q = session.question,
     s = q.sense,
-    item = session.queue[session.index],
     isLearning = session.phase === "learn";
-  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${isLearning ? "새 단어 익히기" : item.retry ? "한 번 더 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(state.settings.hideEnglish ? { noun: "명사", verb: "동사", adjective: "형용사", adverb: "부사", other: "기타" }[s.pos] || "기타" : s.pos)}</span>${item.retry ? "<span>예문을 바꿔 다시 만났어요</span>" : ""}</div>
+  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${isLearning ? "새 단어 익히기" : session.mode === "mistakes" ? "오답 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(state.settings.hideEnglish ? { noun: "명사", verb: "동사", adjective: "형용사", adverb: "부사", other: "기타" }[s.pos] || "기타" : s.pos)}</span></div>
  <article class="word-card"><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button>${isLearning || q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}${isLearning ? `<p class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</p>` : ""}<p class="sentence">${example(s, q.exampleIndex, !isLearning && q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button></article>
  ${
    isLearning
@@ -362,19 +362,11 @@ async function answer(id, self) {
     session.lastCorrect = correct;
     session.attempts++;
     if (correct) session.correct++;
-    else {
-      if (!session.wrongIds.includes(s.id)) session.wrongIds.push(s.id);
-      if (!item.retry)
-        session.queue.splice(
-          Math.min(session.index + 4, session.queue.length),
-          0,
-          { id: s.id, kind: "review", retry: true },
-        );
-    }
+    else if (!session.wrongIds.includes(s.id)) session.wrongIds.push(s.id);
   });
 }
 function results() {
-  return `<section class="result"><div class="result-mark">${icon("check")}</div><div class="eyebrow">${uiText("ONE LOOP CLOSER", "한 걸음 더 가까이")}</div><h1>오늘의 반복이 쌓였어요.</h1><p class="sub">조금씩 익숙해지는 영어.<br>다음 복습에서 다시 만나요.</p><div class="result-stats"><div><strong>${session.initial}</strong><span>학습한 뜻</span></div><div><strong>${session.attempts}</strong><span>재도전 포함 응답</span></div><div><strong>${Math.round((session.correct / session.attempts) * 100)}%</strong><span>전체 응답 정답률</span></div></div>${session.wrongIds.length ? `<button class="btn primary wide" data-action="retry-session">헷갈린 ${session.wrongIds.length}개 다시 풀기 ${icon("repeat")}</button>` : ""}<button class="btn ${session.wrongIds.length ? "" : "primary"} wide" data-action="finish">홈으로 돌아가기 ${icon("arrow")}</button><p class="saved-note">학습 기록을 이 기기에 저장했어요.</p></section>`;
+  return `<section class="result"><div class="result-mark">${icon("check")}</div><div class="eyebrow">${uiText("ONE LOOP CLOSER", "한 걸음 더 가까이")}</div><h1>오늘의 반복이 쌓였어요.</h1><p class="sub">조금씩 익숙해지는 영어.<br>다음 복습에서 다시 만나요.</p><div class="result-stats"><div><strong>${session.initial}</strong><span>학습한 뜻</span></div><div><strong>${session.attempts}</strong><span>응답 횟수</span></div><div><strong>${Math.round((session.correct / session.attempts) * 100)}%</strong><span>전체 응답 정답률</span></div></div>${session.wrongIds.length ? `<button class="btn primary wide" data-action="retry-session">헷갈린 ${session.wrongIds.length}개 다시 풀기 ${icon("repeat")}</button>` : ""}<button class="btn ${session.wrongIds.length ? "" : "primary"} wide" data-action="finish">홈으로 돌아가기 ${icon("arrow")}</button><p class="saved-note">학습 기록을 이 기기에 저장했어요.</p></section>`;
 }
 function words() {
   return (
@@ -483,7 +475,7 @@ function settings() {
  )}</section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
  <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${state.settings.hideEnglish ? "최신 저장본" : escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">${uiText("Wordloop", "워드루프")} 1.1.0 · 학습 기록은 이 기기에만 저장됩니다.</p></section>`
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">${uiText("Wordloop", "워드루프")} 1.1.1 · 학습 기록은 이 기기에만 저장됩니다.</p></section>`
   );
 }
 function showDialog(html) {
@@ -950,6 +942,10 @@ async function boot() {
     bundle = content;
     if (bundle) {
       rebuild();
+      if (removeAutomaticRetries(session)) {
+        if (!session.complete && !session.question) prepareQuestion();
+        await persist();
+      }
       render();
       refreshContent();
     } else await refreshContent();
