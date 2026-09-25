@@ -14,7 +14,12 @@ const FILES = /* PRECACHE */ [
 self.addEventListener("install", (event) =>
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES))),
 );
-// New app versions activate only after the previous app's windows close.
+// Apply immediately only when the learner chooses the update button.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "ACTIVATE_UPDATE")
+    event.waitUntil(self.skipWaiting());
+});
+// Otherwise new versions activate after the previous app's windows close.
 self.addEventListener("activate", (event) =>
   event.waitUntil(
     (async () => {

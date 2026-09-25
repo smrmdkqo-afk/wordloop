@@ -61,7 +61,10 @@ let state = emptyState(),
 let filters = { query: "", kind: "all", level: "all", mistake: "active" },
   selected = new Set();
 let toastTimer,
-  pendingBundle = null;
+  pendingBundle = null,
+  appRegistration,
+  waitingWorker;
+const SESSION_ROUTE = "#learn?session";
 const nav = [
   ["home", "홈"],
   ["learn", "학습"],
@@ -148,6 +151,15 @@ function render() {
           ? words()
           : settings();
   if (route === "words") renderList();
+  showAppUpdate();
+}
+function showAppUpdate() {
+  $("#app-update")?.remove();
+  if (!waitingWorker) return;
+  $("#main").insertAdjacentHTML(
+    "afterbegin",
+    '<div id="app-update" class="resume-banner" role="status"><span>새 앱 버전이 준비됐어요. 학습 기록과 풀던 문제는 유지돼요.</span><button class="btn small" data-action="apply-app-update">지금 적용</button></div>',
+  );
 }
 function heading(title, sub, extra = "") {
   return `<div class="heading"><div><h1>${title}</h1><p class="sub">${sub}</p></div>${extra}</div>`;
@@ -175,14 +187,14 @@ function home() {
     return `<div class="week-day">${["일", "월", "화", "수", "목", "금", "토"][day.getDay()]}<span class="week-dot ${done ? "done" : ""} ${i === 6 ? "current" : ""}" aria-label="${day.getMonth() + 1}월 ${day.getDate()}일 ${done ? "학습 완료" : "학습 전"}">${done ? "✓" : day.getDate()}</span></div>`;
   }).join("");
   return `<div class="heading"><div><p class="date-label">${date}</p><h1>오늘도, 한 단어 더.</h1><p class="sub">쉬운 영어로 이해하고, 내 표현으로 기억해요.</p></div><span class="pill">${icon("leaf")} ${streak}일의 작은 습관</span></div>
- ${session && !session.complete ? `<div class="resume-banner"><span>학습 중인 ${session.queue.length - session.index}문제가 있어요.</span><a class="btn small" href="#learn">이어하기 ${icon("arrow")}</a></div>` : ""}
+ ${session && !session.complete ? `<div class="resume-banner"><span>학습 중인 ${session.queue.length - session.index}문제가 있어요.</span><a class="btn small" href="${SESSION_ROUTE}">이어하기 ${icon("arrow")}</a></div>` : ""}
  <section class="hero"><div><div class="eyebrow">YOUR DAILY WORDLOOP</div><h2>${goalDone ? "오늘의 목표를<br>모두 채웠어요." : "작은 반복이 만드는<br>커다란 자신감."}</h2><p>${goalDone ? "차곡차곡 쌓인 오늘의 한 걸음." : "오늘의 단어를 나만의 속도로 익혀 보세요."}</p><button class="btn dark" data-action="start" data-mode="daily">${session && !session.complete ? "오늘 학습 이어하기" : p.fresh.length + p.review.length ? "오늘 학습 시작하기" : "더 공부하기"} ${icon("arrow")}</button></div><div class="hero-decor" aria-hidden="true"><div class="floating-word"><small>little by little</small><strong>grow.</strong><small>to become better, every day</small></div><span class="floating-tag">한 단어씩, 차곡차곡 ✓</span></div></section>
  <div class="progress-grid">${progressCard("오늘 새 단어", d.newWords.length, state.settings.dailyNew, "spark")}${progressCard("오늘 복습", d.reviews.length, state.settings.dailyReview, "repeat")}</div>
  <div class="section-title"><h2>조금 더 단단하게</h2><a href="#learn">학습 전체 보기 →</a></div><div class="quick-grid"><button class="quick-card" data-action="start" data-mode="mistakes"><span class="icon-box coral">${icon("repeat")}</span><span><strong>틀린 문제 다시 풀기</strong><small>${p.mistakes.length ? p.mistakes.length + "개의 뜻이 기다려요" : "아직 틀린 문제가 없어요"}</small></span>${icon("chevron")}</button><button class="quick-card" data-action="show-favorites"><span class="icon-box">${icon("star")}</span><span><strong>내가 모아둔 단어</strong><small>즐겨찾기 ${all.filter((s) => state.favorites.includes(s.id)).length}개</small></span>${icon("chevron")}</button></div>
  <div class="lower-grid"><section class="panel"><h3>일주일의 작은 발자국</h3><div class="week">${week}</div></section><section class="panel"><h3>내 안에 쌓이는 영어</h3><div class="vocab-total"><div><strong>${known}</strong><span>만나본 단어</span></div><div><strong>${Object.values(state.progress).filter((p) => p.streak >= 3).length}</strong><span>3일 이상 맞힌 뜻</span></div><div><strong>${countWords(all).toLocaleString()}</strong><span>전체 단어</span></div></div></section></div>`;
 }
 function learn() {
-  if (session) {
+  if (session && location.hash === SESSION_ROUTE) {
     if (session.complete) return results();
     return quiz();
   }
@@ -191,6 +203,9 @@ function learn() {
     `<button class="mode-card" data-action="start" data-mode="${mode}"><span class="icon-box ${mode === "mistakes" ? "coral" : ""}">${icon(ico)}</span><strong>${title}</strong><p>${desc}</p><span class="count">${count} ${icon("arrow")}</span></button>`;
   return (
     heading("어떤 반복을 해볼까요?", "오늘의 목표만큼, 혹은 한 걸음 더.") +
+    (session && !session.complete
+      ? `<div class="resume-banner"><span>풀던 ${session.queue.length - session.index}문제가 저장되어 있어요.</span><a class="btn small" href="${SESSION_ROUTE}">이어서 풀기 ${icon("arrow")}</a></div>`
+      : "") +
     `<div class="mode-grid">${card("new", "새 단어 배우기", "쉬운 영어 뜻을 익히고 문제로 확인해요.", p.fresh.length + "개 남음", "spark")}${card("review", "오늘의 복습", "복습할 때가 된 뜻을 다시 꺼내 봐요.", p.review.length + "문제 준비됨", "calendar")}${card("mistakes", "틀린 문제만", "헷갈렸던 뜻을 다른 예문과 보기로 만나요.", p.mistakes.length + "개 · 한 번에 최대 20개", "repeat")}${card("favorites", "즐겨찾기 학습", "기억하고 싶은 표현을 더 단단하게.", all.filter((s) => state.favorites.includes(s.id)).length + "개", "star")}</div><div class="notice">새 단어는 선택한 난이도에서 출제해요. 이미 배운 뜻의 복습은 난이도를 바꿔도 이어집니다.</div><button class="btn ghost wide" data-action="start" data-mode="extra">목표와 별도로 더 공부하기 ${icon("arrow")}</button>`
   );
 }
@@ -218,17 +233,9 @@ function prepareQuestion() {
 }
 async function start(mode, ids) {
   if (session && !session.complete && !ids && mode === "daily") {
-    location.hash = "learn";
+    location.hash = SESSION_ROUTE;
     return;
   }
-  if (
-    session &&
-    !session.complete &&
-    !confirm(
-      "진도는 저장되어 있어요. 현재 학습 묶음을 마치고 새 학습을 시작할까요?",
-    )
-  )
-    return;
   const p = planStudy(state, all);
   let queue = [];
   if (ids)
@@ -274,6 +281,14 @@ async function start(mode, ids) {
     );
     return;
   }
+  if (
+    session &&
+    !session.complete &&
+    !confirm(
+      "이미 푼 문제의 기록은 저장되어 있어요. 남은 문제 대신 선택한 학습을 시작할까요?",
+    )
+  )
+    return;
   const ok = await mutation(() => {
     session = {
       mode,
@@ -289,8 +304,8 @@ async function start(mode, ids) {
     prepareQuestion();
   }, false);
   if (ok) {
-    if (location.hash === "#learn") render();
-    else location.hash = "learn";
+    if (location.hash === SESSION_ROUTE) render();
+    else location.hash = SESSION_ROUTE;
     window.scrollTo(0, 0);
   }
 }
@@ -446,7 +461,7 @@ function settings() {
  )}</section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
  <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.2.0 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.2.1 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
   );
 }
 function showDialog(html) {
@@ -560,13 +575,22 @@ async function refreshContent(manual = false) {
     )
       throw Error("Invalid word data");
     const next = { version: manifest.version, senses };
-    if (session && !session.complete) {
+    // Added/edited entries can be applied while a fixed session is in progress.
+    // Its current question and queue are already saved separately. Defer only
+    // if a queued entry was removed, so the learner can still finish it.
+    const availableIds = new Set([...ids, ...state.custom.map((s) => s.id)]);
+    if (
+      session &&
+      !session.complete &&
+      session.queue.slice(session.index).some((q) => !availableIds.has(q.id))
+    ) {
       pendingBundle = next;
       if (manual) toast("새 단어장을 찾았어요. 현재 학습을 마치면 적용해요.");
       return;
     }
     await write("content", next);
     bundle = next;
+    pendingBundle = null;
     state.contentVersion = bundle.version;
     rebuild();
     await persist();
@@ -587,6 +611,7 @@ async function finish() {
       await write("content", pendingBundle);
       bundle = pendingBundle;
       pendingBundle = null;
+      state.contentVersion = bundle.version;
       rebuild();
     }
   }, false);
@@ -715,7 +740,7 @@ document.addEventListener("click", async (e) => {
     });
     window.scrollTo(0, 0);
   } else if (a === "pause") {
-    location.hash = "home";
+    location.hash = "learn";
     toast("기록을 저장했어요. 언제든 이어서 학습하세요.");
   } else if (a === "finish") await finish();
   else if (a === "retry-session") {
@@ -774,9 +799,23 @@ document.addEventListener("click", async (e) => {
   else if (a === "update") {
     b.disabled = true;
     b.textContent = "확인 중…";
-    await refreshContent(true);
+    await Promise.allSettled([refreshContent(true), appRegistration?.update()]);
     render();
     offlineLabel();
+  } else if (a === "apply-app-update" && waitingWorker) {
+    b.disabled = true;
+    try {
+      await persist();
+      navigator.serviceWorker.addEventListener(
+        "controllerchange",
+        () => location.reload(),
+        { once: true },
+      );
+      waitingWorker.postMessage({ type: "ACTIVATE_UPDATE" });
+    } catch (e) {
+      b.disabled = false;
+      toast("기록을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    }
   } else if (a === "install") install();
 });
 document.addEventListener("input", (e) => {
@@ -911,19 +950,28 @@ async function boot() {
     } else await refreshContent();
     if ("serviceWorker" in navigator)
       try {
-        const registration = await navigator.serviceWorker.register("./sw.js");
-        registration.addEventListener("updatefound", () => {
+        const registration = await navigator.serviceWorker.register("./sw.js", {
+          updateViaCache: "none",
+        });
+        appRegistration = registration;
+        if (registration.waiting) {
+          waitingWorker = registration.waiting;
+          showAppUpdate();
+        }
+        const watchInstallingWorker = () => {
           const worker = registration.installing;
           worker?.addEventListener("statechange", () => {
             if (
               worker.state === "installed" &&
               navigator.serviceWorker.controller
-            )
-              toast(
-                "앱 업데이트가 준비됐어요. 모든 워드루프 창을 닫고 다시 열면 적용돼요.",
-              );
+            ) {
+              waitingWorker = worker;
+              showAppUpdate();
+            }
           });
-        });
+        };
+        registration.addEventListener("updatefound", watchInstallingWorker);
+        watchInstallingWorker();
         navigator.serviceWorker.ready.then(offlineLabel);
       } catch (e) {
         console.warn("Offline setup pending", e);

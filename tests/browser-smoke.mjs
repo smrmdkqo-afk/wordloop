@@ -48,6 +48,81 @@ try {
     path: "test-results/home-mobile.png",
     fullPage: true,
   });
+  // Reproduce an existing user's 1,062-word catalog and unfinished lesson.
+  // A content upgrade must preserve the current question, answers and queue.
+  const upgradeContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    timezoneId: "Asia/Seoul",
+  });
+  contexts.push(upgradeContext);
+  const upgradePage = await upgradeContext.newPage();
+  upgradePage.on("pageerror", (e) => errors.push(e.message));
+  await upgradePage.goto(base);
+  await upgradePage.getByRole("button", { name: "오늘 학습 시작하기" }).click();
+  await upgradePage
+    .getByRole("button", { name: "이제 문제로 확인하기" })
+    .click();
+  const upgradeId = await upgradePage
+    .locator(".word-card .favorite")
+    .getAttribute("data-id");
+  await upgradePage
+    .locator(`.answer:not([data-id="${upgradeId}"])`)
+    .first()
+    .click();
+  await visible(upgradePage, "button", "다음 문제");
+  const beforeUpgrade = await upgradePage.evaluate(async () => {
+    const { read, write } = await import("/src/storage.js");
+    const content = await read("content");
+    content.senses = content.senses.filter(
+      (s) => !s.id.endsWith("-exp-202609"),
+    );
+    content.version = "legacy-1200";
+    if (new Set(content.senses.map((s) => s.word)).size !== 1062)
+      throw Error("Invalid legacy catalog fixture");
+    await write("content", content);
+    return read("snapshot");
+  });
+  await upgradePage.getByRole("link", { name: "홈", exact: true }).click();
+  await upgradePage.reload();
+  await upgradePage.waitForFunction(async () => {
+    const content = await (await import("/src/storage.js")).read("content");
+    return content.senses.length === 4200;
+  });
+  await upgradePage
+    .locator(".vocab-total")
+    .getByText("4,062", { exact: true })
+    .waitFor();
+  const afterUpgrade = await upgradePage.evaluate(async () =>
+    (await import("/src/storage.js")).read("snapshot"),
+  );
+  assert.deepEqual(afterUpgrade.session, beforeUpgrade.session);
+  assert.deepEqual(afterUpgrade.state, beforeUpgrade.state);
+  // The learning tab always opens the menu, even with an unfinished lesson.
+  await upgradePage.getByRole("link", { name: "학습", exact: true }).click();
+  await visible(upgradePage, "heading", "어떤 반복을 해볼까요?");
+  assert.equal(await upgradePage.locator(".mode-card").count(), 4);
+  await upgradePage.getByRole("button", { name: /^오늘의 복습/ }).click();
+  await upgradePage
+    .getByText("지금 복습할 문제가 없어요.", { exact: true })
+    .waitFor();
+  await upgradePage.getByRole("link", { name: "이어서 풀기" }).click();
+  await visible(upgradePage, "button", "다음 문제");
+  assert.equal(await upgradePage.locator(".answer.wrong").count(), 1);
+  assert.match(
+    await upgradePage.locator(".quiz-count").innerText(),
+    /1 \/ 10$/,
+  );
+  await upgradePage.getByRole("button", { name: "학습 잠시 멈추기" }).click();
+  await visible(upgradePage, "heading", "어떤 반복을 해볼까요?");
+  upgradePage.once("dialog", (dialog) => dialog.accept());
+  await upgradePage.getByRole("button", { name: /^틀린 문제만/ }).click();
+  await upgradePage.locator(".quiz").waitFor();
+  assert.match(await upgradePage.locator(".quiz-count").innerText(), /1 \/ 1$/);
+  assert.equal(
+    await upgradePage.locator(".word-card .favorite").getAttribute("data-id"),
+    upgradeId,
+  );
+  await upgradeContext.close();
   // A retired visibility preference must not block learning or survive a reload.
   const seedRemovedSetting = () =>
     page.evaluate(async () => {
@@ -404,9 +479,42 @@ try {
     ),
   );
   assert.equal(Object.values(fixedSnapshot.state.days)[0].newWords.length, 10);
+  await fixedPage.getByRole("link", { name: "학습", exact: true }).click();
+  await visible(fixedPage, "heading", "어떤 반복을 해볼까요?");
+  assert.equal(await fixedPage.locator(".mode-card").count(), 4);
+  await fixedPage.getByRole("button", { name: /^틀린 문제만/ }).click();
+  await fixedPage.locator(".quiz").waitFor();
+  const beforeAppUpdate = await fixedPage.evaluate(async () =>
+    (await import("/src/storage.js")).read("snapshot"),
+  );
+  // An installed PWA can explicitly activate its waiting worker and reload
+  // without clearing IndexedDB or replacing an unfinished learning session.
+  const swPath = path.join(temp, "sw.js");
+  await writeFile(
+    swPath,
+    (await readFile(swPath, "utf8")).replace(
+      /wordloop-([a-f0-9]+)/,
+      "wordloop-$1-update-test",
+    ),
+  );
+  await fixedPage.evaluate(async () => {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.update();
+  });
+  await visible(fixedPage, "button", "지금 적용");
+  await Promise.all([
+    fixedPage.waitForNavigation({ waitUntil: "domcontentloaded" }),
+    fixedPage.getByRole("button", { name: "지금 적용", exact: true }).click(),
+  ]);
+  await fixedPage.locator(".quiz").waitFor();
+  const afterAppUpdate = await fixedPage.evaluate(async () =>
+    (await import("/src/storage.js")).read("snapshot"),
+  );
+  assert.deepEqual(afterAppUpdate, beforeAppUpdate);
+  assert.equal(await fixedPage.locator("#app-update").count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: 300-item goals, removal of English hiding including saved preferences, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
+    "PASS: legacy 1,062-word catalog upgrades during unfinished lessons, learning menu/review/mistake access, installed app update preserves session, 300-item goals, removal of English hiding including saved preferences, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
   );
 } finally {
   await Promise.all(contexts.map((c) => c.close()));
