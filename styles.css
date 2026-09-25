@@ -723,6 +723,12 @@ main {
   line-height: 1.7;
   margin-top: 6px;
 }
+.unknown-answer {
+  margin-top: 14px;
+}
+.feedback .feedback-meaning {
+  font-weight: 600;
+}
 .quiz-actions {
   margin-top: 20px;
 }

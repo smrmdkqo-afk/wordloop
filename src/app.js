@@ -206,7 +206,7 @@ function learn() {
     (session && !session.complete
       ? `<div class="resume-banner"><span>풀던 ${session.queue.length - session.index}문제가 저장되어 있어요.</span><a class="btn small" href="${SESSION_ROUTE}">이어서 풀기 ${icon("arrow")}</a></div>`
       : "") +
-    `<div class="mode-grid">${card("new", "새 단어 배우기", "쉬운 영어 뜻을 익히고 문제로 확인해요.", p.fresh.length + "개 남음", "spark")}${card("review", "오늘의 복습", "복습할 때가 된 뜻을 다시 꺼내 봐요.", p.review.length + "문제 준비됨", "calendar")}${card("mistakes", "틀린 문제만", "헷갈렸던 뜻을 다른 예문과 보기로 만나요.", p.mistakes.length + "개 · 한 번에 최대 20개", "repeat")}${card("favorites", "즐겨찾기 학습", "기억하고 싶은 표현을 더 단단하게.", all.filter((s) => state.favorites.includes(s.id)).length + "개", "star")}</div><div class="notice">새 단어는 선택한 난이도에서 출제해요. 이미 배운 뜻의 복습은 난이도를 바꿔도 이어집니다.</div><button class="btn ghost wide" data-action="start" data-mode="extra">목표와 별도로 더 공부하기 ${icon("arrow")}</button>`
+    `<div class="mode-grid">${card("new", "새 단어 배우기", "문제를 먼저 풀고, 정답과 예문으로 익혀요.", p.fresh.length + "개 남음", "spark")}${card("review", "오늘의 복습", "복습할 때가 된 뜻을 다시 꺼내 봐요.", p.review.length + "문제 준비됨", "calendar")}${card("mistakes", "틀린 문제만", "헷갈렸던 뜻을 다른 예문과 보기로 만나요.", p.mistakes.length + "개 · 한 번에 최대 20개", "repeat")}${card("favorites", "즐겨찾기 학습", "기억하고 싶은 표현을 더 단단하게.", all.filter((s) => state.favorites.includes(s.id)).length + "개", "star")}</div><div class="notice">새 단어는 선택한 난이도에서 출제해요. 이미 배운 뜻의 복습은 난이도를 바꿔도 이어집니다.</div><button class="btn ghost wide" data-action="start" data-mode="extra">목표와 별도로 더 공부하기 ${icon("arrow")}</button>`
   );
 }
 function prepareQuestion() {
@@ -229,7 +229,7 @@ function prepareQuestion() {
   session.choice = null;
   session.revealed = false;
   session.showHint = false;
-  session.phase = item.kind === "new" ? "learn" : "quiz";
+  session.phase = "quiz";
 }
 async function start(mode, ids) {
   if (session && !session.complete && !ids && mode === "daily") {
@@ -311,34 +311,37 @@ async function start(mode, ids) {
 }
 function quiz() {
   const q = session.question,
-    s = q.sense,
-    isLearning = session.phase === "learn";
-  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${isLearning ? "새 단어 익히기" : session.mode === "mistakes" ? "오답 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(s.pos)}</span></div>
- <article class="word-card"><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button>${isLearning || q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}${isLearning ? `<p class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</p>` : ""}<p class="sentence">${example(s, q.exampleIndex, !isLearning && q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button></article>
- ${
-   isLearning
-     ? `<div class="notice">뜻을 이해했다면 예문을 한 번 읽어 보세요.<br>내일 다시 만나 오래 기억하도록 도와줄게요.</div><button class="btn primary wide" data-action="begin-question">이제 문제로 확인하기 ${icon("arrow")}</button>`
-     : `<p class="prompt">${q.direction === "meaning" ? "이 문장에서 어떤 뜻일까요?" : "이 설명에 맞는 단어는 무엇일까요?"}</p>${
-         q.recall
-           ? recall(q)
-           : `<div class="answers">${q.options
-               .map((o, i) => {
-                 const right = session.answered && o.id === s.id,
-                   wrong =
-                     session.answered &&
-                     o.id === session.choice &&
-                     o.id !== s.id;
-                 return `<button class="answer ${right ? "correct" : ""} ${wrong ? "wrong" : ""}" data-action="answer" data-id="${o.id}" aria-disabled="${session.answered}"><span class="letter">${right ? "✓" : wrong ? "×" : ["A", "B", "C", "D"][i]}</span><span>${escape(o.text)}</span><span class="sr-only">${right ? "정답" : wrong ? "선택한 오답" : ""}</span></button>`;
-               })
-               .join("")}</div>`
-       }${session.answered ? `<div class="feedback ${session.lastCorrect ? "" : "wrong"}" role="status"><strong>${session.lastCorrect ? "잘 기억하고 있어요." : "괜찮아요. 다시 만나면 더 익숙해져요."}</strong><p><b>${escape(s.word)}</b> · ${escape(s.definitions[q.definitionIndex])}</p><p>${session.lastCorrect ? "다음 복습 일정에 반영했어요." : state.settings.autoMistakes ? "틀린 문제장에 저장했어요." : "오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요."}</p></div><div class="quiz-actions"><button class="btn primary wide" data-action="next">${session.index + 1 === session.queue.length ? "학습 결과 보기" : "다음 문제"} ${icon("arrow")}</button></div>` : ""}`
- }</section>`;
+    s = q.sense;
+  const choices = q.recall
+    ? recall(q)
+    : `<div class="answers">${q.options
+        .map((o, i) => {
+          const right = session.answered && o.id === s.id,
+            wrong =
+              session.answered && o.id === session.choice && o.id !== s.id;
+          return `<button class="answer ${right ? "correct" : ""} ${wrong ? "wrong" : ""}" data-action="answer" data-id="${o.id}" aria-disabled="${session.answered}"><span class="letter">${right ? "✓" : wrong ? "×" : ["A", "B", "C", "D"][i]}</span><span>${escape(o.text)}</span><span class="sr-only">${right ? "정답" : wrong ? "선택한 오답" : ""}</span></button>`;
+        })
+        .join("")}</div>`;
+  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${session.mode === "mistakes" ? "오답 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(s.pos)}</span></div>
+ <article class="word-card"><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button>${q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}<p class="sentence">${example(s, q.exampleIndex, q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button></article>
+ <p class="prompt">${q.direction === "meaning" ? "이 문장에서 어떤 뜻일까요?" : "이 설명에 맞는 단어는 무엇일까요?"}</p>${choices}
+ ${!session.answered && (!q.recall || !session.revealed) ? '<button class="btn ghost wide unknown-answer" data-action="unknown">모르겠어요</button>' : ""}
+ ${session.answered ? answerFeedback(q) : ""}</section>`;
+}
+function answerFeedback(q) {
+  const s = q.sense;
+  const title = session.lastCorrect
+    ? "잘 기억하고 있어요."
+    : session.choice === null
+      ? "괜찮아요. 여기서 익혀 보세요."
+      : "괜찮아요. 다시 만나면 더 익숙해져요.";
+  return `<div class="feedback ${session.lastCorrect ? "" : "wrong"}" role="status"><strong>${title}</strong><p><b>${escape(s.word)}</b> · ${escape(s.definitions[q.definitionIndex])}</p><p class="feedback-meaning">${escape(s.ko)}</p><p class="sentence">${example(s, q.exampleIndex)}</p><p>${session.lastCorrect ? "다음 복습 일정에 반영했어요." : state.settings.autoMistakes ? "틀린 문제장에 저장했어요." : "오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요."}</p></div><div class="quiz-actions"><button class="btn primary wide" data-action="next">${session.index + 1 === session.queue.length ? "학습 결과 보기" : "다음 문제"} ${icon("arrow")}</button></div>`;
 }
 function recall(q) {
   return `${!session.revealed && !session.answered ? `<button class="btn primary wide" data-action="reveal">정답 보기</button>` : `<div class="panel"><strong>${escape(q.direction === "word" ? q.sense.word : q.sense.definitions[0])}</strong></div>`}${session.revealed && !session.answered ? `<p class="prompt">직접 추가한 단어예요. 기억했는지 확인해 주세요.</p><div class="recall-actions"><button class="btn wide" data-action="self-answer" data-correct="false">다시 볼래요</button><button class="btn primary wide" data-action="self-answer" data-correct="true">알고 있어요</button></div>` : ""}`;
 }
 async function answer(id, self) {
-  if (!session || session.answered || session.phase === "learn" || busy) return;
+  if (!session || session.answered || busy) return;
   const correct = self ?? id === session.question.sense.id;
   await mutation(() => {
     const s = session.question.sense,
@@ -461,7 +464,7 @@ function settings() {
  )}</section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
  <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.2.1 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.3.0 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
   );
 }
 function showDialog(html) {
@@ -718,18 +721,16 @@ document.addEventListener("click", async (e) => {
   } else if (a === "hint") {
     session.showHint = !session.showHint;
     render();
-  } else if (a === "begin-question") {
-    await mutation(() => (session.phase = "quiz"));
-    window.scrollTo(0, 0);
-  } else if (a === "answer") {
-    await answer(id);
+  } else if (a === "answer" || a === "self-answer" || a === "unknown") {
+    const self =
+      a === "unknown"
+        ? false
+        : a === "self-answer"
+          ? b.dataset.correct === "true"
+          : undefined;
+    await answer(id ?? null, self);
     requestAnimationFrame(() =>
-      $(".quiz-actions")?.scrollIntoView({ block: "end", behavior: "instant" }),
-    );
-  } else if (a === "self-answer") {
-    await answer(null, b.dataset.correct === "true");
-    requestAnimationFrame(() =>
-      $(".quiz-actions")?.scrollIntoView({ block: "end", behavior: "instant" }),
+      $(".feedback")?.scrollIntoView({ block: "start", behavior: "instant" }),
     );
   } else if (a === "reveal") await mutation(() => (session.revealed = true));
   else if (a === "next") {
@@ -933,6 +934,11 @@ async function boot() {
       };
       session = saved.session;
       lastQuestions = saved.lastQuestions || {};
+      if (session?.phase === "learn") {
+        session.phase = "quiz";
+        session.showHint = false;
+        await persist();
+      }
       if (Object.hasOwn(state.settings, "hideEnglish")) {
         delete state.settings.hideEnglish;
         await persist();

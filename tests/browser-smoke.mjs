@@ -59,9 +59,31 @@ try {
   upgradePage.on("pageerror", (e) => errors.push(e.message));
   await upgradePage.goto(base);
   await upgradePage.getByRole("button", { name: "오늘 학습 시작하기" }).click();
-  await upgradePage
-    .getByRole("button", { name: "이제 문제로 확인하기" })
-    .click();
+  await visible(upgradePage, "button", "모르겠어요");
+  // Upgrade a saved pre-question learning card without changing its question,
+  // queue or learning history. It must become answerable immediately.
+  const beforeFlowUpgrade = await upgradePage.evaluate(async () => {
+    const { read, write } = await import("/src/storage.js");
+    const snapshot = await read("snapshot");
+    const before = structuredClone(snapshot);
+    snapshot.session.phase = "learn";
+    snapshot.session.showHint = true;
+    await write("snapshot", snapshot);
+    return before;
+  });
+  await upgradePage.reload();
+  await visible(upgradePage, "button", "모르겠어요");
+  assert.equal(
+    await upgradePage
+      .getByRole("button", { name: "이제 문제로 확인하기" })
+      .count(),
+    0,
+  );
+  assert.equal(await upgradePage.locator(".answer").count(), 4);
+  const afterFlowUpgrade = await upgradePage.evaluate(async () =>
+    (await import("/src/storage.js")).read("snapshot"),
+  );
+  assert.deepEqual(afterFlowUpgrade, beforeFlowUpgrade);
   const upgradeId = await upgradePage
     .locator(".word-card .favorite")
     .getAttribute("data-id");
@@ -122,6 +144,41 @@ try {
     await upgradePage.locator(".word-card .favorite").getAttribute("data-id"),
     upgradeId,
   );
+  await upgradePage
+    .getByRole("button", { name: "모르겠어요", exact: true })
+    .click();
+  await visible(upgradePage, "button", "학습 결과 보기");
+  await upgradePage.getByRole("button", { name: "학습 결과 보기" }).click();
+  await upgradePage.getByRole("button", { name: "홈으로 돌아가기" }).click();
+  // 'I don't know' must respect the existing mistake-notebook preference.
+  await upgradePage.getByRole("link", { name: "설정", exact: true }).click();
+  await upgradePage.getByLabel("오답 자동 저장", { exact: true }).uncheck();
+  await upgradePage.getByText("설정을 저장했어요.", { exact: true }).waitFor();
+  await upgradePage.getByRole("link", { name: "학습", exact: true }).click();
+  await upgradePage.getByRole("button", { name: /^새 단어 배우기/ }).click();
+  await visible(upgradePage, "button", "모르겠어요");
+  const withoutNotebookId = await upgradePage
+    .locator(".word-card .favorite")
+    .getAttribute("data-id");
+  assert.notEqual(withoutNotebookId, upgradeId);
+  await upgradePage
+    .getByRole("button", { name: "모르겠어요", exact: true })
+    .click();
+  await upgradePage
+    .getByText("오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요.", {
+      exact: true,
+    })
+    .waitFor();
+  const withoutNotebook = await upgradePage.evaluate(
+    async (id) =>
+      (await (await import("/src/storage.js")).read("snapshot")).state.progress[
+        id
+      ],
+    withoutNotebookId,
+  );
+  assert.equal(withoutNotebook.mistake, null);
+  assert.equal(withoutNotebook.wrong, 1);
+  assert(withoutNotebook.due > Date.now());
   await upgradeContext.close();
   // A retired visibility preference must not block learning or survive a reload.
   const seedRemovedSetting = () =>
@@ -187,7 +244,10 @@ try {
   await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
   await page.getByRole("link", { name: "홈", exact: true }).click();
   await page.getByRole("button", { name: "오늘 학습 시작하기" }).click();
-  await page.getByRole("button", { name: "이제 문제로 확인하기" }).click();
+  await visible(page, "button", "모르겠어요");
+  assert.equal(await page.locator(".answer").count(), 4);
+  assert.equal(await page.locator(".word-card .definition-prompt").count(), 0);
+  assert.equal(await page.locator(".feedback").count(), 0);
   const id = await page.locator(".word-card .favorite").getAttribute("data-id");
   await page.locator(`.answer:not([data-id="${id}"])`).first().click();
   await visible(page, "button", "학습 결과 보기");
@@ -205,6 +265,9 @@ try {
   await page.getByRole("button", { name: "헷갈린 1개 다시 풀기" }).click();
   assert.match(await page.locator(".quiz-count").innerText(), /1 \/ 1$/);
   await page.locator(`.answer[data-id="${id}"]`).click();
+  await page.locator(".feedback:not(.wrong)").waitFor();
+  assert.match(await page.locator(".feedback-meaning").innerText(), /[가-힣]/);
+  assert.equal(await page.locator(".feedback .sentence mark").count(), 1);
   await page.getByRole("button", { name: "학습 결과 보기" }).click();
   await page.getByRole("button", { name: "홈으로 돌아가기" }).click();
   await page.getByRole("link", { name: "단어장", exact: true }).click();
@@ -242,8 +305,13 @@ try {
     .waitFor();
   await customWordRow.locator(".word-open").click();
   await page.getByRole("button", { name: "이 뜻 학습하기" }).click();
-  await page.getByRole("button", { name: "이제 문제로 확인하기" }).click();
+  await visible(page, "button", "모르겠어요");
   await page.getByRole("button", { name: "정답 보기", exact: true }).click();
+  await visible(page, "button", "알고 있어요");
+  assert.equal(
+    await page.getByRole("button", { name: "모르겠어요", exact: true }).count(),
+    0,
+  );
   await page.getByRole("button", { name: "알고 있어요", exact: true }).click();
   await page.getByRole("button", { name: "학습 결과 보기" }).click();
   await page.getByRole("button", { name: "홈으로 돌아가기" }).click();
@@ -366,7 +434,7 @@ try {
     path: "test-results/home-desktop.png",
     fullPage: true,
   });
-  // Wrong answers never extend a ten-question lesson, including after a reload.
+  // Wrong answers and 'I don't know' never extend a ten-question lesson.
   const fixedContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });
@@ -374,20 +442,50 @@ try {
   const fixedPage = await fixedContext.newPage();
   fixedPage.on("pageerror", (e) => errors.push(e.message));
   await fixedPage.goto(base);
+  await fixedPage.getByRole("link", { name: "설정", exact: true }).click();
+  await fixedPage.getByLabel("문제 방향", { exact: true }).selectOption("word");
+  await fixedPage.getByText("설정을 저장했어요.", { exact: true }).waitFor();
+  await fixedPage.getByRole("link", { name: "홈", exact: true }).click();
   await fixedPage.getByRole("button", { name: "오늘 학습 시작하기" }).click();
   const originalIds = [];
   for (let i = 1; i <= 10; i++) {
-    await fixedPage
-      .getByRole("button", { name: "이제 문제로 확인하기" })
-      .click();
+    await fixedPage.waitForFunction(
+      (expected) =>
+        document.querySelector(".quiz-count strong")?.textContent ===
+        String(expected),
+      i,
+    );
+    await visible(fixedPage, "button", "모르겠어요");
+    assert.equal(await fixedPage.locator(".answer").count(), 4);
+    assert.equal(await fixedPage.locator(".word-card .word").count(), 0);
+    assert.equal(await fixedPage.locator(".word-card .blank").count(), 1);
+    assert.equal(await fixedPage.locator(".feedback").count(), 0);
     const currentId = await fixedPage
       .locator(".word-card .favorite")
       .getAttribute("data-id");
     originalIds.push(currentId);
-    await fixedPage
-      .locator(`.answer:not([data-id="${currentId}"])`)
-      .first()
-      .click();
+    if (i === 1) {
+      await fixedPage.screenshot({
+        path: "test-results/question-first-mobile.png",
+        fullPage: true,
+      });
+      // A quick double tap must still record just one wrong answer.
+      await fixedPage
+        .getByRole("button", { name: "모르겠어요", exact: true })
+        .evaluate((el) => {
+          el.click();
+          el.click();
+        });
+    } else if (i % 2 === 1) {
+      await fixedPage
+        .getByRole("button", { name: "모르겠어요", exact: true })
+        .click();
+    } else {
+      await fixedPage
+        .locator(`.answer:not([data-id="${currentId}"])`)
+        .first()
+        .click();
+    }
     await visible(
       fixedPage,
       "button",
@@ -397,6 +495,53 @@ try {
       await fixedPage.locator(".quiz-count").innerText(),
       new RegExp(`${i} / 10$`),
     );
+    if (i === 1) {
+      assert.equal(await fixedPage.locator(".answer.correct").count(), 1);
+      assert.equal(await fixedPage.locator(".answer.wrong").count(), 0);
+      // The explanation and next button must clear the fixed mobile navigation.
+      await fixedPage.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          ),
+      );
+      assert(
+        await fixedPage.evaluate(() => {
+          const feedback = document
+            .querySelector(".feedback")
+            .getBoundingClientRect();
+          const next = document
+            .querySelector('[data-action="next"]')
+            .getBoundingClientRect();
+          const nav = document
+            .querySelector("#navigation")
+            .getBoundingClientRect();
+          return feedback.top >= 0 && next.bottom <= nav.top;
+        }),
+      );
+      await fixedPage.screenshot({
+        path: "test-results/answer-viewport-mobile.png",
+      });
+      await fixedPage.reload();
+      await visible(fixedPage, "button", "다음 문제");
+      const skipped = await fixedPage.evaluate(async () =>
+        (await import("/src/storage.js")).read("snapshot"),
+      );
+      assert.equal(skipped.session.choice, null);
+      assert.equal(skipped.session.attempts, 1);
+      assert.equal(skipped.session.queue.length, 10);
+      assert.equal(skipped.state.progress[currentId].seen, 1);
+      assert.equal(skipped.state.progress[currentId].wrong, 1);
+      assert.equal(skipped.state.progress[currentId].mistake, "active");
+      assert.equal(
+        await fixedPage.locator(".feedback .sentence mark").innerText(),
+        skipped.session.question.sense.word,
+      );
+      await fixedPage.screenshot({
+        path: "test-results/answer-explanation-mobile.png",
+        fullPage: true,
+      });
+    }
     if (i === 4) {
       // Simulate the queued retries left behind by the previous app version.
       await fixedPage.evaluate(async () => {
@@ -514,7 +659,7 @@ try {
   assert.equal(await fixedPage.locator("#app-update").count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: legacy 1,062-word catalog upgrades during unfinished lessons, learning menu/review/mistake access, installed app update preserves session, 300-item goals, removal of English hiding including saved preferences, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
+    "PASS: question-first flow in both directions, saved learning-card migration, unknown answers with/without mistake notebook and duplicate taps, post-answer meanings/examples, legacy 1,062-word catalog upgrades during unfinished lessons, learning menu/review/mistake access, installed app update preserves session, 300-item goals, removal of English hiding including saved preferences, compact navigation, fixed-length lesson/manual retry, reload, mistakes, selection, custom recall, favorites, backup restore, content update, bad-update fallback, offline, multi-tab protection, 320/390/1440px layouts.",
   );
 } finally {
   await Promise.all(contexts.map((c) => c.close()));

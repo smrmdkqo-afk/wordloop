@@ -12,7 +12,15 @@ const FILES = /* PRECACHE */ [
   "./manifest.webmanifest",
 ];
 self.addEventListener("install", (event) =>
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES))),
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) =>
+        cache.addAll(
+          FILES.map((file) => new Request(file, { cache: "reload" })),
+        ),
+      ),
+  ),
 );
 // Apply immediately only when the learner chooses the update button.
 self.addEventListener("message", (event) => {
