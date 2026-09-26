@@ -9,12 +9,11 @@ export function quizSpeech(question, kind, revealed = false) {
     return revealed
       ? [sense.word, definition, sentence.replace("{}", sense.word)]
       : [];
-  if (kind === "choices")
-    return question.recall
-      ? []
-      : question.options.map(
-          (option, i) => `Option ${["A", "B", "C", "D"][i]}. ${option.text}`,
-        );
+  const choice = /^choice-([0-3])$/.exec(kind);
+  if (choice) {
+    const option = question.options?.[Number(choice[1])];
+    return !question.recall && option ? [option.text] : [];
+  }
   if (kind !== "question") return [];
   return [
     direction === "meaning" ? sense.word : definition,

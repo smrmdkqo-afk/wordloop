@@ -125,6 +125,106 @@ try {
   await btn("오늘 학습 시작하기").click();
   await btn("문제 듣기").waitFor();
   assert.equal((await calls()).length, 0);
+  // Exercise both directions using a stable catalog question at phone sizes.
+  // Reading icons must stay reachable without grading; normal phone viewports
+  // show the complete question, four choices and unknown-answer action at once.
+  const original = await state();
+  for (const direction of ["word", "meaning"]) {
+    await page.evaluate(
+      async ({ original, direction }) => {
+        const { read, write } = await import("/src/storage.js");
+        const { makeQuestion } = await import("/src/core.js");
+        const content = await read("content");
+        const sense = content.senses.find((s) => s.word === "borrow");
+        const saved = structuredClone(original);
+        saved.session.queue[0].id = sense.id;
+        saved.session.question = makeQuestion(
+          sense,
+          new Map(content.senses.map((s) => [s.id, s])),
+          direction,
+          {},
+          () => 0.42,
+        );
+        await write("snapshot", saved);
+      },
+      { original, direction },
+    );
+    await page.reload();
+    await btn("문제 듣기").waitFor();
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 360, height: 740 },
+      { width: 320, height: 700 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const bounds = await page.evaluate(() => {
+        window.scrollTo(0, 0);
+        const bottom =
+          innerWidth <= 720
+            ? document.querySelector("#navigation").getBoundingClientRect().top
+            : innerHeight;
+        return {
+          contentBottom: document
+            .querySelector(".unknown-answer")
+            .getBoundingClientRect().bottom,
+          availableBottom: bottom,
+          fits:
+            document.querySelector(".word-card").getBoundingClientRect().top >=
+              0 &&
+            document.querySelector(".unknown-answer").getBoundingClientRect()
+              .bottom <= bottom,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+          touchTargets: [
+            ...document.querySelectorAll(".quiz .speech-icon"),
+          ].every((el) => {
+            const r = el.getBoundingClientRect();
+            return r.width >= 44 && r.height >= 44;
+          }),
+          textFits: [
+            ...document.querySelectorAll(".answer-text, .question-heading h1"),
+          ].every((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const text = range.getBoundingClientRect();
+            const container = el.closest(".answer-row, .word-card");
+            const box = container.getBoundingClientRect();
+            const speaker = container
+              .querySelector(".speech-icon")
+              .getBoundingClientRect();
+            return (
+              text.left >= box.left &&
+              text.right <= speaker.left &&
+              text.top >= box.top &&
+              text.bottom <= box.bottom
+            );
+          }),
+        };
+      });
+      if (viewport.width === 390) {
+        await mkdir("test-results", { recursive: true });
+        await page.screenshot({
+          path: `test-results/compact-quiz-${direction}.png`,
+        });
+      }
+      if (viewport.width >= 360)
+        assert(
+          bounds.fits,
+          `${direction} ${viewport.width}x${viewport.height}: question/choices must fit above navigation: ${JSON.stringify(bounds)}`,
+        );
+      assert(
+        !bounds.overflow && bounds.touchTargets && bounds.textFits,
+        JSON.stringify({ direction, viewport, bounds }),
+      );
+    }
+  }
+  await page.evaluate(
+    async (saved) => (await import("/src/storage.js")).write("snapshot", saved),
+    original,
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await btn("문제 듣기").waitFor();
   const before = await state(),
     q = before.session.question;
   await btn("문제 듣기").click();
@@ -140,20 +240,39 @@ try {
     "true",
   );
   assert.equal(await btn("정답·예문 듣기").count(), 0);
-  const cancellations = await page.evaluate(
-    () => window.__speech.cancellations,
-  );
+  let cancellations = await page.evaluate(() => window.__speech.cancellations);
+  assert.equal(await page.locator(".quiz .speech-icon").count(), 5);
+  assert.equal(await page.locator("button button").count(), 0);
+  assert.equal(await btn("보기 듣기").count(), 0);
+  for (let i = 0; i < 4; i++) {
+    await clear();
+    await btn(`${["A", "B", "C", "D"][i]} 보기 듣기`).click();
+    assert.equal(
+      await page.evaluate(() => window.__speech.cancellations),
+      ++cancellations,
+    );
+    assert.deepEqual(
+      (await calls()).map((c) => c.text),
+      [q.options[i].text],
+    );
+    assert.equal(
+      await page.locator('.quiz .speech-icon[aria-pressed="true"]').count(),
+      1,
+    );
+    assert.deepEqual(await state(), before);
+  }
+  await btn("읽기 중지").click();
+  assert.equal(await page.evaluate(() => window.__speech.active.length), 0);
   await clear();
-  await btn("보기 듣기").click();
-  assert.equal(
-    await page.evaluate(() => window.__speech.cancellations),
-    cancellations + 1,
-  );
+  await btn("A 보기 듣기").focus();
+  await page.keyboard.press("Space");
   assert.deepEqual(
     (await calls()).map((c) => c.text),
-    q.options.map((o, i) => `Option ${["A", "B", "C", "D"][i]}. ${o.text}`),
+    [q.options[0].text],
   );
-  assert.deepEqual((await state()).session, before.session);
+  assert.deepEqual(await state(), before);
+  await btn("읽기 중지").press("Enter");
+  assert.equal(await page.evaluate(() => window.__speech.active.length), 0);
   await btn("모르겠어요").click();
   await btn("정답·예문 듣기").waitFor();
   assert.equal(await page.evaluate(() => window.__speech.active.length), 0);
@@ -299,7 +418,7 @@ try {
   assert.deepEqual(errors, []);
   await unsupported.close();
   console.log(
-    "Speech browser checks passed: manual/auto reading, speed persistence, blank safety, stop/replacement, fixed question count, dialogs, unsupported engine, 320/390px layout.",
+    "Speech browser checks passed: individual choice icons, touch/keyboard playback without grading, both directions fit 360/390px phones, 320/1440px layout, manual/auto reading, speed persistence, blank safety, stop/replacement, fixed question count, dialogs, unsupported engine.",
   );
 } finally {
   await browser.close();

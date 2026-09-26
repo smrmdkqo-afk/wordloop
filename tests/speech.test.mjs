@@ -39,14 +39,16 @@ test("meaning questions do not speak the correct definition before answering", (
   );
 });
 
-test("choices preserve visible A-D order and recall questions have no spoken choices", () => {
-  assert.deepEqual(quizSpeech(question, "choices"), [
-    "Option A. buy",
-    "Option B. borrow",
-    "Option C. lend",
-    "Option D. sell",
-  ]);
-  assert.deepEqual(quizSpeech({ ...question, recall: true }, "choices"), []);
+test("each choice reads only its visible text, including after shuffling", () => {
+  for (const options of [question.options, [...question.options].reverse()]) {
+    for (let i = 0; i < options.length; i++)
+      assert.deepEqual(quizSpeech({ ...question, options }, `choice-${i}`), [
+        options[i].text,
+      ]);
+  }
+  for (const kind of ["choices", "choice--1", "choice-4", "choice-0x"])
+    assert.deepEqual(quizSpeech(question, kind), []);
+  assert.deepEqual(quizSpeech({ ...question, recall: true }, "choice-0"), []);
 });
 
 function fixture(voices = []) {

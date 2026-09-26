@@ -85,7 +85,7 @@ try {
   );
   assert.deepEqual(afterFlowUpgrade, beforeFlowUpgrade);
   const upgradeId = await upgradePage
-    .locator(".word-card .favorite")
+    .locator(".quiz-labels .favorite")
     .getAttribute("data-id");
   await upgradePage
     .locator(`.answer:not([data-id="${upgradeId}"])`)
@@ -141,7 +141,7 @@ try {
   await upgradePage.locator(".quiz").waitFor();
   assert.match(await upgradePage.locator(".quiz-count").innerText(), /1 \/ 1$/);
   assert.equal(
-    await upgradePage.locator(".word-card .favorite").getAttribute("data-id"),
+    await upgradePage.locator(".quiz-labels .favorite").getAttribute("data-id"),
     upgradeId,
   );
   await upgradePage
@@ -158,7 +158,7 @@ try {
   await upgradePage.getByRole("button", { name: /^새 단어 배우기/ }).click();
   await visible(upgradePage, "button", "모르겠어요");
   const withoutNotebookId = await upgradePage
-    .locator(".word-card .favorite")
+    .locator(".quiz-labels .favorite")
     .getAttribute("data-id");
   assert.notEqual(withoutNotebookId, upgradeId);
   await upgradePage
@@ -248,7 +248,9 @@ try {
   assert.equal(await page.locator(".answer").count(), 4);
   assert.equal(await page.locator(".word-card .definition-prompt").count(), 0);
   assert.equal(await page.locator(".feedback").count(), 0);
-  const id = await page.locator(".word-card .favorite").getAttribute("data-id");
+  const id = await page
+    .locator(".quiz-labels .favorite")
+    .getAttribute("data-id");
   await page.locator(`.answer:not([data-id="${id}"])`).first().click();
   await visible(page, "button", "학습 결과 보기");
   await seedRemovedSetting();
@@ -461,7 +463,7 @@ try {
     assert.equal(await fixedPage.locator(".word-card .blank").count(), 1);
     assert.equal(await fixedPage.locator(".feedback").count(), 0);
     const currentId = await fixedPage
-      .locator(".word-card .favorite")
+      .locator(".quiz-labels .favorite")
       .getAttribute("data-id");
     originalIds.push(currentId);
     if (i === 1) {
@@ -586,7 +588,7 @@ try {
       i,
     );
     const currentId = await fixedPage
-      .locator(".word-card .favorite")
+      .locator(".quiz-labels .favorite")
       .getAttribute("data-id");
     assert(originalIds.includes(currentId));
     await fixedPage

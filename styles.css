@@ -591,9 +591,12 @@ main {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin: 24px 0 14px;
+  margin: 8px 0;
   font-size: 12px;
   color: var(--muted);
+}
+.quiz-labels .favorite {
+  margin-left: auto;
 }
 .badge {
   font-size: 11px;
@@ -611,10 +614,30 @@ main {
   border-radius: 22px;
   position: relative;
 }
-.word-card > .icon-button {
-  position: absolute;
-  right: 17px;
-  top: 17px;
+.question-heading,
+.feedback-heading,
+.recall-answer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.question-heading {
+  margin-bottom: 10px;
+}
+.question-heading > h1 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.feedback-heading {
+  align-items: center;
+}
+.feedback-heading > strong,
+.recall-answer > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .word {
   font-size: 42px;
@@ -661,17 +684,35 @@ main {
   display: grid;
   gap: 10px;
 }
+.answer-row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: white;
+}
+.answer-row > .speech-icon {
+  align-self: center;
+  margin: 4px 6px 4px 0;
+  color: var(--muted);
+}
 .answer {
   display: flex;
   gap: 15px;
   align-items: center;
   text-align: left;
-  padding: 15px 17px;
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 13px;
+  flex: 1;
+  min-width: 0;
+  padding: 15px 12px 15px 17px;
+  background: transparent;
+  border: 0;
+  border-radius: 12px 0 0 12px;
   min-height: 61px;
   font-size: 15px;
+}
+.answer-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .answer .letter {
   display: grid;
@@ -684,15 +725,17 @@ main {
   color: #66735d;
   font-size: 12px;
 }
-.answer:not([aria-disabled="true"]):hover {
+.answer-row:has(.answer:not([aria-disabled="true"]):hover) {
   border-color: #9eb378;
   background: #fcfdf9;
 }
+.answer-row.correct,
 .answer.correct {
   background: var(--green-bg);
   border-color: #87ac8d;
   color: var(--green);
 }
+.answer-row.wrong,
 .answer.wrong {
   background: var(--coral-bg);
   border-color: #d49b8a;
@@ -736,6 +779,12 @@ main {
 .btn.speech-button {
   min-height: 44px;
 }
+.speech-icon {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
 .speech-button[aria-pressed="true"] {
   background: var(--lime);
   color: var(--ink);
@@ -744,6 +793,15 @@ main {
 .speech-button .icon {
   width: 17px;
   height: 17px;
+}
+.speech-icon .icon {
+  width: 20px;
+  height: 20px;
+}
+.speech-icon[aria-pressed="true"] .icon {
+  fill: currentColor;
+  width: 16px;
+  height: 16px;
 }
 .feedback .feedback-meaning {
   font-weight: 600;
@@ -1527,17 +1585,37 @@ dialog .actions > .primary {
     font-size: 11px;
   }
   .quiz {
-    margin-top: -10px;
+    margin-top: 0;
+  }
+  body:has(.quiz) .sidebar {
+    padding-top: 12px;
+  }
+  body:has(.quiz) .topbar {
+    top: 19px;
+  }
+  main:has(> .quiz) {
+    margin-top: 8px;
+    margin-bottom: 0;
   }
   .quiz-top {
-    margin-bottom: 12px;
+    margin-bottom: 6px;
   }
   .quiz-labels {
-    margin-top: 20px;
+    margin: 4px 0 6px;
   }
   .word-card {
-    padding: 25px 23px;
+    padding: 16px;
     border-radius: 18px;
+  }
+  .question-heading {
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .word-card .sentence {
+    line-height: 1.6;
+  }
+  .word-card .hint {
+    margin-top: 4px;
   }
   .word {
     font-size: 38px;
@@ -1550,13 +1628,22 @@ dialog .actions > .primary {
   }
   .prompt {
     font-size: 12px;
-    margin: 18px 0 12px;
+    margin: 10px 0 8px;
+  }
+  .answers {
+    gap: 8px;
   }
   .answer {
     font-size: 14px;
-    min-height: 60px;
-    padding: 13px 14px;
-    gap: 12px;
+    min-height: 52px;
+    padding: 8px 8px 8px 12px;
+    gap: 10px;
+  }
+  .quiz .unknown-answer {
+    min-height: 44px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: 8px;
   }
   .feedback {
     padding: 17px;
@@ -1654,6 +1741,26 @@ dialog .actions > .primary {
   }
   .resume-banner {
     font-size: 12px;
+  }
+}
+@media (max-width: 720px) and (max-height: 760px) {
+  body:has(.quiz) .sidebar {
+    padding-top: 8px;
+  }
+  body:has(.quiz) .topbar {
+    top: 15px;
+  }
+  main:has(> .quiz) {
+    margin-top: 4px;
+  }
+  .quiz-labels {
+    margin: 0 0 4px;
+  }
+  .word-card {
+    padding: 14px;
+  }
+  .quiz .prompt {
+    margin: 8px 0 6px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
