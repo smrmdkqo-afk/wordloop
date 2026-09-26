@@ -726,6 +726,25 @@ main {
 .unknown-answer {
   margin-top: 14px;
 }
+.speech-toolbar {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.btn.speech-button {
+  min-height: 44px;
+}
+.speech-button[aria-pressed="true"] {
+  background: var(--lime);
+  color: var(--ink);
+  border-color: transparent;
+}
+.speech-button .icon {
+  width: 17px;
+  height: 17px;
+}
 .feedback .feedback-meaning {
   font-weight: 600;
 }

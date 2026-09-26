@@ -1,3 +1,5 @@
+import { SPEECH_RATES } from "./speech.js";
+
 export const LEVELS = {
   beginner: "초급",
   intermediate: "중급",
@@ -11,6 +13,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mode: "mixed",
   autoMistakes: true,
   resolveDays: 2,
+  autoRead: false,
+  speechRate: 1,
 });
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -308,7 +312,11 @@ export function validateBackup(input) {
     !s.settings.levels.length ||
     s.settings.levels.some((l) => !Object.hasOwn(LEVELS, l)) ||
     !["mixed", "meaning", "word"].includes(s.settings.mode) ||
-    typeof s.settings.autoMistakes !== "boolean"
+    typeof s.settings.autoMistakes !== "boolean" ||
+    (s.settings.autoRead !== undefined &&
+      typeof s.settings.autoRead !== "boolean") ||
+    (s.settings.speechRate !== undefined &&
+      !SPEECH_RATES.includes(s.settings.speechRate))
   )
     throw new Error("백업의 학습 설정을 확인해 주세요.");
   const idOK = (x) =>

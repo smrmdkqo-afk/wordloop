@@ -15,6 +15,7 @@ import {
   shuffle,
 } from "./core.js";
 import { read, write } from "./storage.js";
+import { createSpeaker, quizSpeech, SPEECH_RATES } from "./speech.js";
 const $ = (s) => document.querySelector(s);
 const escape = (s) =>
   String(s ?? "").replace(
@@ -45,6 +46,8 @@ const paths = {
   flag: "M5 21V3 M5 4h14l-3 4 3 4H5",
   calendar: "M4 5h16v16H4z M8 3v4 M16 3v4 M4 10h16",
   book: "M5 3h14v18H5z M9 7h6 M9 11h6 M9 15h3",
+  speaker: "M3 9h4l5-4v14l-5-4H3z M16 8a6 6 0 0 1 0 8 M19 5a10 10 0 0 1 0 14",
+  stop: "M6 6h12v12H6z",
 };
 const icon = (name, cls = "") =>
   `<svg class="icon ${cls}" aria-hidden="true" viewBox="0 0 24 24"><path d="${paths[name] || paths.book}"/></svg>`;
@@ -65,6 +68,10 @@ let toastTimer,
   appRegistration,
   waitingWorker;
 const SESSION_ROUTE = "#learn?session";
+const speaker = createSpeaker({
+  onChange: updateReadButtons,
+  onError: speechError,
+});
 const nav = [
   ["home", "홈"],
   ["learn", "학습"],
@@ -76,6 +83,63 @@ function toast(message) {
   $("#toast").classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 3500);
+}
+function readButton(kind, label, id = "") {
+  return `<button class="btn small speech-button" data-action="speak" data-read="${kind}" data-id="${escape(id)}" data-label="${label}" aria-label="${label}" aria-pressed="false" ${speaker.supported ? "" : "disabled"}>${icon("speaker")}<span>${label}</span></button>`;
+}
+function updateReadButtons() {
+  for (const button of document.querySelectorAll('[data-action="speak"]')) {
+    const active = speaker.key === button.dataset.read;
+    const label = active ? "읽기 중지" : button.dataset.label;
+    button.innerHTML = `${icon(active ? "stop" : "speaker")}<span>${label}</span>`;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-pressed", String(active));
+  }
+}
+function speechError(reason) {
+  toast(
+    reason === "not-allowed"
+      ? "읽기 버튼을 직접 눌러 음성을 시작해 주세요."
+      : reason === "unsupported"
+        ? "이 브라우저는 음성 읽기를 지원하지 않아요. 다른 브라우저에서 열어 주세요."
+        : "음성을 재생하지 못했어요. 기기의 영어 음성과 인터넷 연결을 확인해 주세요.",
+  );
+}
+function readQuestionAutomatically() {
+  if (
+    state.settings.autoRead &&
+    speaker.supported &&
+    session &&
+    !session.complete &&
+    !session.answered &&
+    !session.revealed
+  )
+    speaker.read(quizSpeech(session.question, "question"), {
+      key: "question",
+      rate: state.settings.speechRate,
+    });
+}
+function readAloud(kind, id) {
+  if (speaker.key === kind) return speaker.stop();
+  let parts = [];
+  if (kind === "preview") parts = ["Let's learn a few words together."];
+  else if (kind === "detail") {
+    const sense = byId.get(id);
+    if (sense)
+      parts = [
+        sense.word,
+        sense.definitions[0],
+        ...sense.examples.map((e) => e.replace("{}", sense.word)),
+      ];
+  } else if (session && !session.complete && location.hash === SESSION_ROUTE) {
+    parts = quizSpeech(
+      session.question,
+      kind,
+      session.answered || (session.question.recall && session.revealed),
+    );
+  }
+  if (parts.length)
+    speaker.read(parts, { key: kind, rate: state.settings.speechRate });
 }
 function rebuild() {
   all = [...bundle.senses, ...state.custom];
@@ -101,6 +165,7 @@ async function mutation(fn, refresh = true) {
     if (refresh) render();
     return true;
   } catch (e) {
+    speaker.stop();
     restore(before);
     toast("저장하지 못했어요. 기기의 저장 공간을 확인해 주세요.");
     console.error(e);
@@ -152,6 +217,7 @@ function render() {
           : settings();
   if (route === "words") renderList();
   showAppUpdate();
+  updateReadButtons();
 }
 function showAppUpdate() {
   $("#app-update")?.remove();
@@ -234,6 +300,7 @@ function prepareQuestion() {
 async function start(mode, ids) {
   if (session && !session.complete && !ids && mode === "daily") {
     location.hash = SESSION_ROUTE;
+    readQuestionAutomatically();
     return;
   }
   const p = planStudy(state, all);
@@ -290,6 +357,7 @@ async function start(mode, ids) {
   )
     return;
   const ok = await mutation(() => {
+    speaker.stop();
     session = {
       mode,
       queue,
@@ -302,6 +370,7 @@ async function start(mode, ids) {
       startedAt: Date.now(),
     };
     prepareQuestion();
+    readQuestionAutomatically();
   }, false);
   if (ok) {
     if (location.hash === SESSION_ROUTE) render();
@@ -324,6 +393,7 @@ function quiz() {
         .join("")}</div>`;
   return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${session.mode === "mistakes" ? "오답 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(s.pos)}</span></div>
  <article class="word-card"><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button>${q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}<p class="sentence">${example(s, q.exampleIndex, q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button></article>
+ <div class="speech-toolbar">${readButton("question", "문제 듣기")}${q.recall ? "" : readButton("choices", "보기 듣기")}</div>
  <p class="prompt">${q.direction === "meaning" ? "이 문장에서 어떤 뜻일까요?" : "이 설명에 맞는 단어는 무엇일까요?"}</p>${choices}
  ${!session.answered && (!q.recall || !session.revealed) ? '<button class="btn ghost wide unknown-answer" data-action="unknown">모르겠어요</button>' : ""}
  ${session.answered ? answerFeedback(q) : ""}</section>`;
@@ -335,13 +405,14 @@ function answerFeedback(q) {
     : session.choice === null
       ? "괜찮아요. 여기서 익혀 보세요."
       : "괜찮아요. 다시 만나면 더 익숙해져요.";
-  return `<div class="feedback ${session.lastCorrect ? "" : "wrong"}" role="status"><strong>${title}</strong><p><b>${escape(s.word)}</b> · ${escape(s.definitions[q.definitionIndex])}</p><p class="feedback-meaning">${escape(s.ko)}</p><p class="sentence">${example(s, q.exampleIndex)}</p><p>${session.lastCorrect ? "다음 복습 일정에 반영했어요." : state.settings.autoMistakes ? "틀린 문제장에 저장했어요." : "오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요."}</p></div><div class="quiz-actions"><button class="btn primary wide" data-action="next">${session.index + 1 === session.queue.length ? "학습 결과 보기" : "다음 문제"} ${icon("arrow")}</button></div>`;
+  return `<div class="feedback ${session.lastCorrect ? "" : "wrong"}" role="status"><strong>${title}</strong><p><b>${escape(s.word)}</b> · ${escape(s.definitions[q.definitionIndex])}</p><p class="feedback-meaning">${escape(s.ko)}</p><p class="sentence">${example(s, q.exampleIndex)}</p><div class="speech-toolbar">${readButton("answer", "정답·예문 듣기")}</div><p>${session.lastCorrect ? "다음 복습 일정에 반영했어요." : state.settings.autoMistakes ? "틀린 문제장에 저장했어요." : "오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요."}</p></div><div class="quiz-actions"><button class="btn primary wide" data-action="next">${session.index + 1 === session.queue.length ? "학습 결과 보기" : "다음 문제"} ${icon("arrow")}</button></div>`;
 }
 function recall(q) {
-  return `${!session.revealed && !session.answered ? `<button class="btn primary wide" data-action="reveal">정답 보기</button>` : `<div class="panel"><strong>${escape(q.direction === "word" ? q.sense.word : q.sense.definitions[0])}</strong></div>`}${session.revealed && !session.answered ? `<p class="prompt">직접 추가한 단어예요. 기억했는지 확인해 주세요.</p><div class="recall-actions"><button class="btn wide" data-action="self-answer" data-correct="false">다시 볼래요</button><button class="btn primary wide" data-action="self-answer" data-correct="true">알고 있어요</button></div>` : ""}`;
+  return `${!session.revealed && !session.answered ? `<button class="btn primary wide" data-action="reveal">정답 보기</button>` : `<div class="panel"><strong>${escape(q.direction === "word" ? q.sense.word : q.sense.definitions[0])}</strong></div>`}${session.revealed && !session.answered ? `<div class="speech-toolbar">${readButton("answer", "정답·예문 듣기")}</div><p class="prompt">직접 추가한 단어예요. 기억했는지 확인해 주세요.</p><div class="recall-actions"><button class="btn wide" data-action="self-answer" data-correct="false">다시 볼래요</button><button class="btn primary wide" data-action="self-answer" data-correct="true">알고 있어요</button></div>` : ""}`;
 }
 async function answer(id, self) {
   if (!session || session.answered || busy) return;
+  speaker.stop();
   const correct = self ?? id === session.question.sense.id;
   await mutation(() => {
     const s = session.question.sense,
@@ -462,17 +533,20 @@ function settings() {
      )
      .join("")}</select>`,
  )}</section>
+ <section class="setting-section"><h2>음성 읽기</h2>${row("문제 자동 읽기", "학습 시작과 다음 문제에서 문제·예문을 읽어요.", `<label class="switch"><input type="checkbox" aria-label="문제 자동 읽기" data-setting="autoRead" ${st.autoRead ? "checked" : ""} ${speaker.supported ? "" : "disabled"}><span></span></label>`)}${row("읽기 속도", "편안하게 들리는 속도를 골라 보세요.", `<select aria-label="읽기 속도" data-setting="speechRate" ${speaker.supported ? "" : "disabled"}>${SPEECH_RATES.map((rate) => `<option value="${rate}" ${st.speechRate === rate ? "selected" : ""}>${rate}배${rate === 1 ? " (보통)" : rate === 0.75 ? " (천천히)" : ""}</option>`).join("")}</select>`)}<div class="speech-toolbar">${readButton("preview", "음성 미리 듣기")}</div><p class="content-version">${speaker.supported ? "기기의 영어 음성을 사용해요. 음성에 따라 인터넷 연결이 필요할 수 있어요." : "이 브라우저는 음성 읽기를 지원하지 않아요. 다른 브라우저에서 열어 주세요."}</p></section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
  <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.3.0 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.4.0 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
   );
 }
 function showDialog(html) {
+  speaker.stop();
   const d = $("#dialog");
   d.innerHTML = html;
   if (!d.open) d.showModal();
 }
 function closeDialog() {
+  speaker.stop();
   $("#dialog").close();
 }
 function detail(id) {
@@ -480,7 +554,7 @@ function detail(id) {
   if (!s) return;
   const p = state.progress[id];
   showDialog(
-    `<div class="dialog-header"><span>${badge(s)} · ${escape(s.pos)}</span><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><h2 class="word">${escape(s.word)}</h2><p class="definition">${escape(s.definitions[0])}</p>${s.examples.map((_, i) => `<p class="example sentence">${example(s, i)}</p>`).join("")}<details><summary class="hint">한국어 뜻 보기</summary><p>${escape(s.ko)}</p></details>${p ? `<p class="content-version">정답 ${p.right}회 · 오답 ${p.wrong}회<br>다음 복습: ${new Date(p.due).toLocaleDateString("ko-KR")}${p.mistake === "active" ? ` · 해결까지 ${p.resolvedDates.length}/${state.settings.resolveDays}일` : ""}</p>` : ""}<div class="actions"><button class="btn primary" data-action="practice-one" data-id="${id}">이 뜻 학습하기 ${icon("arrow")}</button>${id.startsWith("custom-") ? `<button class="btn" data-action="edit-word" data-id="${id}">수정</button><button class="btn danger" data-action="delete-word" data-id="${id}">삭제</button>` : ""}</div>`,
+    `<div class="dialog-header"><span>${badge(s)} · ${escape(s.pos)}</span><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><h2 class="word">${escape(s.word)}</h2><div class="speech-toolbar">${readButton("detail", "단어·예문 듣기", id)}</div><p class="definition">${escape(s.definitions[0])}</p>${s.examples.map((_, i) => `<p class="example sentence">${example(s, i)}</p>`).join("")}<details><summary class="hint">한국어 뜻 보기</summary><p>${escape(s.ko)}</p></details>${p ? `<p class="content-version">정답 ${p.right}회 · 오답 ${p.wrong}회<br>다음 복습: ${new Date(p.due).toLocaleDateString("ko-KR")}${p.mistake === "active" ? ` · 해결까지 ${p.resolvedDates.length}/${state.settings.resolveDays}일` : ""}</p>` : ""}<div class="actions"><button class="btn primary" data-action="practice-one" data-id="${id}">이 뜻 학습하기 ${icon("arrow")}</button>${id.startsWith("custom-") ? `<button class="btn" data-action="edit-word" data-id="${id}">수정</button><button class="btn danger" data-action="delete-word" data-id="${id}">삭제</button>` : ""}</div>`,
   );
 }
 function wordForm(id) {
@@ -657,6 +731,7 @@ async function importBackup(file) {
     )
       return;
     await mutation(() => {
+      speaker.stop();
       state = next;
       session = null;
       lastQuestions = {};
@@ -691,10 +766,17 @@ async function offlineLabel() {
     : "첫 방문 준비 중 · 잠시 뒤 다시 확인";
 }
 window.addEventListener("hashchange", () => {
+  if (location.hash !== SESSION_ROUTE || speaker.key !== "question")
+    speaker.stop();
   render();
   window.scrollTo(0, 0);
   offlineLabel();
 });
+window.addEventListener("pagehide", () => speaker.stop());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) speaker.stop();
+});
+$("#dialog").addEventListener("cancel", () => speaker.stop());
 window.addEventListener("online", () => {
   toast("온라인으로 연결됐어요.");
   refreshContent();
@@ -707,11 +789,14 @@ window.addEventListener("beforeinstallprompt", (e) => {
   installPrompt = e;
 });
 document.addEventListener("click", async (e) => {
+  if (e.target.closest(`a[href="${SESSION_ROUTE}"]`))
+    readQuestionAutomatically();
   const b = e.target.closest("[data-action]");
   if (!b || busy) return;
   const a = b.dataset.action,
     id = b.dataset.id;
-  if (a === "start") await start(b.dataset.mode);
+  if (a === "speak") readAloud(b.dataset.read, id);
+  else if (a === "start") await start(b.dataset.mode);
   else if (a === "favorite") {
     await mutation(() => {
       state.favorites = state.favorites.includes(id)
@@ -732,12 +817,18 @@ document.addEventListener("click", async (e) => {
     requestAnimationFrame(() =>
       $(".feedback")?.scrollIntoView({ block: "start", behavior: "instant" }),
     );
-  } else if (a === "reveal") await mutation(() => (session.revealed = true));
-  else if (a === "next") {
+  } else if (a === "reveal") {
+    speaker.stop();
+    await mutation(() => (session.revealed = true));
+  } else if (a === "next") {
+    speaker.stop();
     await mutation(() => {
       session.index++;
       if (session.index >= session.queue.length) session.complete = true;
-      else prepareQuestion();
+      else {
+        prepareQuestion();
+        readQuestionAutomatically();
+      }
     });
     window.scrollTo(0, 0);
   } else if (a === "pause") {
@@ -804,6 +895,7 @@ document.addEventListener("click", async (e) => {
     render();
     offlineLabel();
   } else if (a === "apply-app-update" && waitingWorker) {
+    speaker.stop();
     b.disabled = true;
     try {
       await persist();
@@ -856,6 +948,11 @@ document.addEventListener("change", async (e) => {
   } else if (el.dataset.setting) {
     const key = el.dataset.setting;
     let value = el.type === "checkbox" ? el.checked : el.value;
+    if (key === "speechRate") {
+      value = Number(value);
+      if (!SPEECH_RATES.includes(value)) return;
+    }
+    if (key === "speechRate" || key === "autoRead") speaker.stop();
     if (["dailyNew", "dailyReview", "resolveDays"].includes(key)) {
       value = Number(value);
       const max = key === "resolveDays" ? 5 : MAX_DAILY_GOAL;
@@ -932,6 +1029,9 @@ async function boot() {
         ...structuredClone(DEFAULT_SETTINGS),
         ...state.settings,
       };
+      state.settings.autoRead = state.settings.autoRead === true;
+      if (!SPEECH_RATES.includes(state.settings.speechRate))
+        state.settings.speechRate = 1;
       session = saved.session;
       lastQuestions = saved.lastQuestions || {};
       if (session?.phase === "learn") {
