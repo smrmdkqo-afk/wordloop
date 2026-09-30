@@ -7,6 +7,7 @@ const FILES = /* PRECACHE */ [
   "./src/core.js",
   "./src/storage.js",
   "./src/speech.js",
+  "./src/assembly.js",
   "./assets/icon.svg",
   "./assets/icon-192.png",
   "./assets/icon-512.png",

@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import assert from "node:assert/strict";
+import { validAssemblyAlternatives } from "../src/assembly.js";
 const names = (await readdir("data")).filter(
   (f) => f.endsWith(".json") && f !== "manifest.json",
 );
@@ -29,6 +30,10 @@ for (const s of all) {
       s.definitions.length &&
       s.definitions.every((d) => typeof d === "string" && d.length > 5),
     "missing definition",
+  );
+  check(
+    validAssemblyAlternatives(s),
+    "assembly alternatives must use the definition's exact word pieces",
   );
   check(
     Array.isArray(s.examples) &&

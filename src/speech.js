@@ -15,6 +15,7 @@ export function quizSpeech(question, kind, revealed = false) {
     return !question.recall && option ? [option.text] : [];
   }
   if (kind !== "question") return [];
+  if (question.type === "assembly") return [sense.word];
   return [
     direction === "meaning" ? sense.word : definition,
     sentence.replace(

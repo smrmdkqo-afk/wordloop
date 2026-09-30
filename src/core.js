@@ -1,4 +1,9 @@
 import { SPEECH_RATES } from "./speech.js";
+import {
+  FORMATS,
+  validAssemblyAlternatives,
+  validAssemblyProgress,
+} from "./assembly.js";
 
 export const LEVELS = {
   beginner: "초급",
@@ -15,6 +20,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   resolveDays: 2,
   autoRead: false,
   speechRate: 1,
+  format: "choice",
+  adaptiveAssembly: true,
 });
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -313,6 +320,10 @@ export function validateBackup(input) {
     s.settings.levels.some((l) => !Object.hasOwn(LEVELS, l)) ||
     !["mixed", "meaning", "word"].includes(s.settings.mode) ||
     typeof s.settings.autoMistakes !== "boolean" ||
+    (s.settings.format !== undefined &&
+      !Object.hasOwn(FORMATS, s.settings.format)) ||
+    (s.settings.adaptiveAssembly !== undefined &&
+      typeof s.settings.adaptiveAssembly !== "boolean") ||
     (s.settings.autoRead !== undefined &&
       typeof s.settings.autoRead !== "boolean") ||
     (s.settings.speechRate !== undefined &&
@@ -353,6 +364,8 @@ export function validateBackup(input) {
       c.distractors.some((x) => !idOK(x))
     )
       throw new Error("직접 추가한 단어의 형식이 올바르지 않아요.");
+    if (!validAssemblyAlternatives(c))
+      throw new Error("문장 조립의 추가 정답을 확인해 주세요.");
     customIds.add(c.id);
   }
   for (const [id, p] of Object.entries(s.progress)) {
@@ -374,6 +387,8 @@ export function validateBackup(input) {
       p.resolvedDates.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))
     )
       throw new Error("백업의 학습 기록을 확인해 주세요.");
+    if (p.assembly !== undefined && !validAssemblyProgress(p.assembly, p))
+      throw new Error("백업의 문장 조립 기록을 확인해 주세요.");
   }
   for (const [date, d] of Object.entries(s.days)) {
     if (

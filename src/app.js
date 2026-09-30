@@ -16,6 +16,14 @@ import {
 } from "./core.js";
 import { read, write } from "./storage.js";
 import { createSpeaker, quizSpeech, SPEECH_RATES } from "./speech.js";
+import {
+  FORMATS,
+  makeAssemblyQuestion,
+  checkAssembly,
+  formatQueue,
+  recordAssembly,
+  validAssemblyAlternatives,
+} from "./assembly.js";
 const $ = (s) => document.querySelector(s);
 const escape = (s) =>
   String(s ?? "").replace(
@@ -255,7 +263,7 @@ function home() {
   }).join("");
   return `<div class="heading"><div><p class="date-label">${date}</p><h1>오늘도, 한 단어 더.</h1><p class="sub">쉬운 영어로 이해하고, 내 표현으로 기억해요.</p></div><span class="pill">${icon("leaf")} ${streak}일의 작은 습관</span></div>
  ${session && !session.complete ? `<div class="resume-banner"><span>학습 중인 ${session.queue.length - session.index}문제가 있어요.</span><a class="btn small" href="${SESSION_ROUTE}">이어하기 ${icon("arrow")}</a></div>` : ""}
- <section class="hero"><div><div class="eyebrow">YOUR DAILY WORDLOOP</div><h2>${goalDone ? "오늘의 목표를<br>모두 채웠어요." : "작은 반복이 만드는<br>커다란 자신감."}</h2><p>${goalDone ? "차곡차곡 쌓인 오늘의 한 걸음." : "오늘의 단어를 나만의 속도로 익혀 보세요."}</p><button class="btn dark" data-action="start" data-mode="daily">${session && !session.complete ? "오늘 학습 이어하기" : p.fresh.length + p.review.length ? "오늘 학습 시작하기" : "더 공부하기"} ${icon("arrow")}</button></div><div class="hero-decor" aria-hidden="true"><div class="floating-word"><small>little by little</small><strong>grow.</strong><small>to become better, every day</small></div><span class="floating-tag">한 단어씩, 차곡차곡 ✓</span></div></section>
+ <section class="hero"><div><div class="eyebrow">나의 매일, 워드루프</div><h2>${goalDone ? "오늘의 목표를<br>모두 채웠어요." : "작은 반복이 만드는<br>커다란 자신감."}</h2><p>${goalDone ? "차곡차곡 쌓인 오늘의 한 걸음." : "오늘의 단어를 나만의 속도로 익혀 보세요."}</p><button class="btn dark" data-action="start" data-mode="daily">${session && !session.complete ? "오늘 학습 이어하기" : p.fresh.length + p.review.length ? "오늘 학습 시작하기" : "더 공부하기"} ${icon("arrow")}</button></div><div class="hero-decor" aria-hidden="true"><div class="loop-orbit">${icon("repeat")}</div><span class="floating-tag">한 단어씩, 차곡차곡 ✓</span></div></section>
  <div class="progress-grid">${progressCard("오늘 새 단어", d.newWords.length, state.settings.dailyNew, "spark")}${progressCard("오늘 복습", d.reviews.length, state.settings.dailyReview, "repeat")}</div>
  <div class="section-title"><h2>조금 더 단단하게</h2><a href="#learn">학습 전체 보기 →</a></div><div class="quick-grid"><button class="quick-card" data-action="start" data-mode="mistakes"><span class="icon-box coral">${icon("repeat")}</span><span><strong>틀린 문제 다시 풀기</strong><small>${p.mistakes.length ? p.mistakes.length + "개의 뜻이 기다려요" : "아직 틀린 문제가 없어요"}</small></span>${icon("chevron")}</button><button class="quick-card" data-action="show-favorites"><span class="icon-box">${icon("star")}</span><span><strong>내가 모아둔 단어</strong><small>즐겨찾기 ${all.filter((s) => state.favorites.includes(s.id)).length}개</small></span>${icon("chevron")}</button></div>
  <div class="lower-grid"><section class="panel"><h3>일주일의 작은 발자국</h3><div class="week">${week}</div></section><section class="panel"><h3>내 안에 쌓이는 영어</h3><div class="vocab-total"><div><strong>${known}</strong><span>만나본 단어</span></div><div><strong>${Object.values(state.progress).filter((p) => p.streak >= 3).length}</strong><span>3일 이상 맞힌 뜻</span></div><div><strong>${countWords(all).toLocaleString()}</strong><span>전체 단어</span></div></div></section></div>`;
@@ -273,18 +281,32 @@ function learn() {
     (session && !session.complete
       ? `<div class="resume-banner"><span>풀던 ${session.queue.length - session.index}문제가 저장되어 있어요.</span><a class="btn small" href="${SESSION_ROUTE}">이어서 풀기 ${icon("arrow")}</a></div>`
       : "") +
+    `<section class="format-panel" aria-label="새 학습의 문제 방식"><div><h2>어떻게 풀까요?</h2><p>새로 시작하는 학습에 적용해요. 풀던 문제는 그대로 이어집니다.</p></div><div class="format-choices">${Object.entries(
+      FORMATS,
+    )
+      .map(
+        ([value, label]) =>
+          `<button class="format-choice ${state.settings.format === value ? "active" : ""}" data-action="study-format" data-format="${value}" aria-pressed="${state.settings.format === value}">${label}</button>`,
+      )
+      .join(
+        "",
+      )}</div><p class="format-description">${state.settings.format === "assembly" ? "단어와 한국어 뜻을 보고, 단어 조각으로 영어 뜻을 완성해요." : state.settings.format === "mixed" ? "선택형과 문장 조립을 함께 풀어요. 10문제라면 선택형 7개·조립 3개예요." : "단어와 영어 뜻을 연결하는 보기 4개 중 하나를 골라요."}</p></section>` +
     `<div class="mode-grid">${card("new", "새 단어 배우기", "문제를 먼저 풀고, 정답과 예문으로 익혀요.", p.fresh.length + "개 남음", "spark")}${card("review", "오늘의 복습", "복습할 때가 된 뜻을 다시 꺼내 봐요.", p.review.length + "문제 준비됨", "calendar")}${card("mistakes", "틀린 문제만", "헷갈렸던 뜻을 다른 예문과 보기로 만나요.", p.mistakes.length + "개 · 한 번에 최대 20개", "repeat")}${card("favorites", "즐겨찾기 학습", "기억하고 싶은 표현을 더 단단하게.", all.filter((s) => state.favorites.includes(s.id)).length + "개", "star")}</div><div class="notice">새 단어는 선택한 난이도에서 출제해요. 이미 배운 뜻의 복습은 난이도를 바꿔도 이어집니다.</div><button class="btn ghost wide" data-action="start" data-mode="extra">목표와 별도로 더 공부하기 ${icon("arrow")}</button>`
   );
 }
 function prepareQuestion() {
   const item = session.queue[session.index],
     s = byId.get(item.id);
-  session.question = makeQuestion(
-    s,
-    byId,
-    state.settings.mode,
-    lastQuestions[s.id],
-  );
+  session.question =
+    item.format === "assembly"
+      ? makeAssemblyQuestion(
+          s,
+          lastQuestions[s.id],
+          state.settings.adaptiveAssembly
+            ? state.progress[s.id]?.assembly?.level || 0
+            : 0,
+        )
+      : makeQuestion(s, byId, state.settings.mode, lastQuestions[s.id]);
   const q = session.question;
   lastQuestions[s.id] = {
     exampleIndex: q.exampleIndex,
@@ -296,6 +318,10 @@ function prepareQuestion() {
   session.choice = null;
   session.revealed = false;
   session.showHint = false;
+  session.selectedTokens = [];
+  session.assemblyAssisted = false;
+  session.assemblyHint = false;
+  session.assemblySubmitted = false;
   session.phase = "quiz";
 }
 async function start(mode, ids) {
@@ -361,7 +387,8 @@ async function start(mode, ids) {
     speaker.stop();
     session = {
       mode,
-      queue,
+      format: state.settings.format,
+      queue: formatQueue(queue, state.settings.format),
       index: 0,
       initial: queue.length,
       attempts: 0,
@@ -382,20 +409,23 @@ async function start(mode, ids) {
 function quiz() {
   const q = session.question,
     s = q.sense;
-  const choices = q.recall
-    ? recall(q)
-    : `<div class="answers">${q.options
-        .map((o, i) => {
-          const right = session.answered && o.id === s.id,
-            wrong =
-              session.answered && o.id === session.choice && o.id !== s.id;
-          const status = right ? "correct" : wrong ? "wrong" : "";
-          return `<div class="answer-row ${status}"><button class="answer ${status}" data-action="answer" data-id="${o.id}" aria-disabled="${session.answered}"><span class="letter">${right ? "✓" : wrong ? "×" : ["A", "B", "C", "D"][i]}</span><span class="answer-text">${escape(o.text)}</span><span class="sr-only">${right ? "정답" : wrong ? "선택한 오답" : ""}</span></button>${readButton(`choice-${i}`, `${["A", "B", "C", "D"][i]} 보기 듣기`, "", true)}</div>`;
-        })
-        .join("")}</div>`;
-  return `<section class="quiz"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${session.mode === "mistakes" ? "오답 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(s.pos)}</span><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button></div>
- <article class="word-card"><div class="question-heading">${q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}${readButton("question", "문제 듣기", "", true)}</div><p class="sentence">${example(s, q.exampleIndex, q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button></article>
- <p class="prompt">${q.direction === "meaning" ? "이 문장에서 어떤 뜻일까요?" : "이 설명에 맞는 단어는 무엇일까요?"}</p>${choices}
+  const choices =
+    q.type === "assembly"
+      ? assembly(q)
+      : q.recall
+        ? recall(q)
+        : `<div class="answers">${q.options
+            .map((o, i) => {
+              const right = session.answered && o.id === s.id,
+                wrong =
+                  session.answered && o.id === session.choice && o.id !== s.id;
+              const status = right ? "correct" : wrong ? "wrong" : "";
+              return `<div class="answer-row ${status}"><button class="answer ${status}" data-action="answer" data-id="${o.id}" aria-disabled="${session.answered}"><span class="letter">${right ? "✓" : wrong ? "×" : ["A", "B", "C", "D"][i]}</span><span class="answer-text">${escape(o.text)}</span><span class="sr-only">${right ? "정답" : wrong ? "선택한 오답" : ""}</span></button>${readButton(`choice-${i}`, `${["A", "B", "C", "D"][i]} 보기 듣기`, "", true)}</div>`;
+            })
+            .join("")}</div>`;
+  return `<section class="quiz ${q.type === "assembly" ? "assembly-quiz" : ""}"><div class="quiz-top"><button class="icon-button" data-action="pause" aria-label="학습 잠시 멈추기">${icon("close")}</button><span class="quiz-count">${session.mode === "mistakes" ? "오답 복습" : "오늘의 학습"} · <strong>${session.index + 1}</strong> / ${session.queue.length}</span><span class="pill">${session.correct}개 정답</span></div><div class="bar" role="progressbar" aria-label="이번 학습 진행률" aria-valuenow="${session.index}" aria-valuemin="0" aria-valuemax="${session.queue.length}"><span style="width:${(session.index / session.queue.length) * 100}%"></span></div><div class="quiz-labels">${badge(s)}<span>${escape(s.pos)}</span><span class="question-type">${q.type === "assembly" ? "문장 조립" : "선택형"}</span><button class="icon-button favorite ${state.favorites.includes(s.id) ? "on" : ""}" data-action="favorite" data-id="${s.id}" aria-label="즐겨찾기" aria-pressed="${state.favorites.includes(s.id)}">${icon("star")}</button></div>
+ <article class="word-card"><div class="question-heading">${q.direction === "meaning" ? `<h1 class="word">${escape(s.word)}</h1>` : `<h1 class="definition-prompt">${escape(s.definitions[q.definitionIndex])}</h1>`}${readButton("question", "문제 듣기", "", true)}</div>${q.type === "assembly" ? `<p class="assembly-meaning">${escape(s.ko || "이 단어의 영어 뜻을 완성해 보세요.")}</p>` : `<p class="sentence">${example(s, q.exampleIndex, q.direction === "word" && !session.answered)}</p><button class="hint" data-action="hint">${session.showHint ? escape(s.ko) : "한국어 힌트 보기"}</button>`}</article>
+ <p class="prompt">${q.type === "assembly" ? "단어를 골라 영어 뜻을 완성해 보세요." : q.direction === "meaning" ? "이 문장에서 어떤 뜻일까요?" : "이 설명에 맞는 단어는 무엇일까요?"}</p>${choices}
  ${!session.answered && (!q.recall || !session.revealed) ? '<button class="btn ghost wide unknown-answer" data-action="unknown">모르겠어요</button>' : ""}
  ${session.answered ? answerFeedback(q) : ""}</section>`;
 }
@@ -403,22 +433,54 @@ function answerFeedback(q) {
   const s = q.sense;
   const title = session.lastCorrect
     ? "잘 기억하고 있어요."
-    : session.choice === null
+    : session.choice === null && !session.assemblySubmitted
       ? "괜찮아요. 여기서 익혀 보세요."
       : "괜찮아요. 다시 만나면 더 익숙해져요.";
-  return `<div class="feedback ${session.lastCorrect ? "" : "wrong"}" role="status"><div class="feedback-heading"><strong>${title}</strong>${readButton("answer", "정답·예문 듣기", "", true)}</div><p><b>${escape(s.word)}</b> · ${escape(s.definitions[q.definitionIndex])}</p><p class="feedback-meaning">${escape(s.ko)}</p><p class="sentence">${example(s, q.exampleIndex)}</p><p>${session.lastCorrect ? "다음 복습 일정에 반영했어요." : state.settings.autoMistakes ? "틀린 문제장에 저장했어요." : "오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요."}</p></div><div class="quiz-actions"><button class="btn primary wide" data-action="next">${session.index + 1 === session.queue.length ? "학습 결과 보기" : "다음 문제"} ${icon("arrow")}</button></div>`;
+  const mastery = state.progress[s.id]?.assembly;
+  const assemblyNote =
+    q.type === "assembly" &&
+    session.lastCorrect &&
+    state.settings.adaptiveAssembly
+      ? `<p class="mastery-note">${session.assemblyAssisted ? "힌트로 익혔어요. 숙련도 날짜에는 포함하지 않아요." : mastery.level > q.level ? "서로 다른 3일에 맞혔어요. 다음에는 방해 단어가 하나 늘어요." : mastery.level === 2 ? "방해 단어 2개로 연습하고 있어요." : `문장 조립 숙련: ${mastery.qualifiedDates.length}/3일 · 오늘 첫 시도의 정답만 세어요.`}</p>`
+      : "";
+  return `<div class="feedback ${session.lastCorrect ? "" : "wrong"}" role="status"><div class="feedback-heading"><strong>${title}</strong>${readButton("answer", "정답·예문 듣기", "", true)}</div><p><b>${escape(s.word)}</b> · ${escape(s.definitions[q.definitionIndex])}</p><p class="feedback-meaning">${escape(s.ko)}</p><p class="sentence">${example(s, q.exampleIndex)}</p><p>${session.lastCorrect ? "다음 복습 일정에 반영했어요." : state.settings.autoMistakes ? "틀린 문제장에 저장했어요." : "오답 자동 저장은 꺼져 있어요. 일반 복습에는 반영했어요."}</p>${assemblyNote}</div><div class="quiz-actions"><button class="btn primary wide" data-action="next">${session.index + 1 === session.queue.length ? "학습 결과 보기" : "다음 문제"} ${icon("arrow")}</button></div>`;
+}
+function assembly(q) {
+  const selected = session.selectedTokens || [];
+  const tokenButton = (token, chosen) =>
+    `<button class="word-token ${chosen ? "chosen" : ""} ${session.assemblyHint && token.id === "w0" ? "hinted" : ""}" data-action="${chosen ? "assembly-remove" : "assembly-add"}" data-id="${token.id}" aria-label="${escape(token.text)} ${chosen ? "되돌리기" : "선택"}" ${session.answered || (!chosen && (selected.includes(token.id) || selected.length >= q.requiredCount)) ? "disabled" : ""}>${escape(token.text)}</button>`;
+  return `<div class="assembly-workspace"><div class="assembly-caption"><span>내가 만든 뜻</span><span aria-live="polite">${selected.length} / ${q.requiredCount} 단어</span></div><div class="assembled-sentence ${session.answered ? (session.lastCorrect ? "correct" : "wrong") : ""}" role="group" aria-label="선택한 단어, 누르면 되돌리기">${
+    selected.length
+      ? selected
+          .map((id) =>
+            tokenButton(
+              q.tokens.find((token) => token.id === id),
+              true,
+            ),
+          )
+          .join("")
+      : '<p class="assembly-placeholder">아래 단어를 순서대로 눌러 보세요.</p>'
+  }</div><div class="token-bank" role="group" aria-label="고를 단어">${q.tokens.map((token) => tokenButton(token, false)).join("")}</div>${!session.answered ? `<div class="assembly-tools"><button class="text-button" data-action="assembly-reset" ${selected.length ? "" : "disabled"}>${icon("repeat")} 처음부터</button><button class="text-button" data-action="assembly-hint">${icon("spark")} ${session.assemblyHint ? `첫 단어: ${escape(q.tokens.find((token) => token.id === "w0").text)}` : "첫 단어 힌트"}</button></div><button class="btn primary wide" data-action="assembly-submit" ${selected.length === q.requiredCount ? "" : "disabled"}>확인하기 ${icon("check")}</button>` : ""}</div>`;
 }
 function recall(q) {
   return `${!session.revealed && !session.answered ? `<button class="btn primary wide" data-action="reveal">정답 보기</button>` : `<div class="panel recall-answer"><strong>${escape(q.direction === "word" ? q.sense.word : q.sense.definitions[0])}</strong>${session.answered ? "" : readButton("answer", "정답·예문 듣기", "", true)}</div>`}${session.revealed && !session.answered ? `<p class="prompt">직접 추가한 단어예요. 기억했는지 확인해 주세요.</p><div class="recall-actions"><button class="btn wide" data-action="self-answer" data-correct="false">다시 볼래요</button><button class="btn primary wide" data-action="self-answer" data-correct="true">알고 있어요</button></div>` : ""}`;
 }
-async function answer(id, self) {
+async function answer(id, self, assemblySubmitted = false) {
   if (!session || session.answered || busy) return;
   speaker.stop();
   const correct = self ?? id === session.question.sense.id;
   await mutation(() => {
     const s = session.question.sense,
       item = session.queue[session.index];
-    recordAnswer(state, s, correct, { kind: item.kind });
+    const p = recordAnswer(state, s, correct, { kind: item.kind });
+    if (session.question.type === "assembly") {
+      recordAssembly(p, correct, {
+        date: dateKey(),
+        assisted: session.assemblyAssisted,
+        level: session.question.level,
+      });
+      session.assemblySubmitted = assemblySubmitted;
+    }
     session.answered = true;
     session.choice = id;
     session.lastCorrect = correct;
@@ -521,8 +583,19 @@ function settings() {
      )
      .join("")}</div>`,
  )}${row(
+   "문제 방식",
+   "선택형, 영어 뜻 문장 조립, 두 가지 혼합 중에서 골라요. 새 학습부터 적용해요.",
+   `<select aria-label="문제 방식" data-setting="format">${Object.entries(
+     FORMATS,
+   )
+     .map(
+       ([v, l]) =>
+         `<option value="${v}" ${st.format === v ? "selected" : ""}>${l}</option>`,
+     )
+     .join("")}</select>`,
+ )}${row(
    "문제 방향",
-   "다른 예문과 보기로 의미를 확인해요.",
+   "선택형 문제에서 단어와 영어 뜻 중 무엇을 먼저 볼지 정해요.",
    `<select aria-label="문제 방향" data-setting="mode">${[
      ["mixed", "두 가지 섞어서"],
      ["meaning", "단어 → 영어 뜻"],
@@ -534,10 +607,11 @@ function settings() {
      )
      .join("")}</select>`,
  )}</section>
- <section class="setting-section"><h2>음성 읽기</h2>${row("문제 자동 읽기", "학습 시작과 다음 문제에서 문제·예문을 읽어요.", `<label class="switch"><input type="checkbox" aria-label="문제 자동 읽기" data-setting="autoRead" ${st.autoRead ? "checked" : ""} ${speaker.supported ? "" : "disabled"}><span></span></label>`)}${row("읽기 속도", "편안하게 들리는 속도를 골라 보세요.", `<select aria-label="읽기 속도" data-setting="speechRate" ${speaker.supported ? "" : "disabled"}>${SPEECH_RATES.map((rate) => `<option value="${rate}" ${st.speechRate === rate ? "selected" : ""}>${rate}배${rate === 1 ? " (보통)" : rate === 0.75 ? " (천천히)" : ""}</option>`).join("")}</select>`)}<div class="speech-toolbar">${readButton("preview", "음성 미리 듣기")}</div><p class="content-version">${speaker.supported ? "기기의 영어 음성을 사용해요. 음성에 따라 인터넷 연결이 필요할 수 있어요." : "이 브라우저는 음성 읽기를 지원하지 않아요. 다른 브라우저에서 열어 주세요."}</p></section>
+ <section class="setting-section"><h2>문장 조립</h2>${row("방해 단어 자동 조절", "뜻마다 서로 다른 3일의 첫 시도에서 힌트 없이 맞히면 방해 단어를 하나씩, 최대 2개까지 늘려요. 방해 단어가 있는 단계에서 2회 연속 틀리면 다음에는 하나 줄여요.", `<label class="switch"><input type="checkbox" aria-label="방해 단어 자동 조절" data-setting="adaptiveAssembly" ${st.adaptiveAssembly ? "checked" : ""}><span></span></label>`)}<p class="content-version">끄면 방해 단어 없이 연습해요. 쌓인 숙련 기록은 보관해요. 초급·중급·고급 단어 난이도와는 별도로 조절됩니다.</p></section>
+ <section class="setting-section"><h2>음성 읽기</h2>${row("문제 자동 읽기", "선택형은 문제·예문, 문장 조립은 단어 발음만 읽어요. 조립 정답은 채점 후 들을 수 있어요.", `<label class="switch"><input type="checkbox" aria-label="문제 자동 읽기" data-setting="autoRead" ${st.autoRead ? "checked" : ""} ${speaker.supported ? "" : "disabled"}><span></span></label>`)}${row("읽기 속도", "편안하게 들리는 속도를 골라 보세요.", `<select aria-label="읽기 속도" data-setting="speechRate" ${speaker.supported ? "" : "disabled"}>${SPEECH_RATES.map((rate) => `<option value="${rate}" ${st.speechRate === rate ? "selected" : ""}>${rate}배${rate === 1 ? " (보통)" : rate === 0.75 ? " (천천히)" : ""}</option>`).join("")}</select>`)}<div class="speech-toolbar">${readButton("preview", "음성 미리 듣기")}</div><p class="content-version">${speaker.supported ? "기기의 영어 음성을 사용해요. 음성에 따라 인터넷 연결이 필요할 수 있어요." : "이 브라우저는 음성 읽기를 지원하지 않아요. 다른 브라우저에서 열어 주세요."}</p></section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
  <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.4.1 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.5.0 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
   );
 }
 function showDialog(html) {
@@ -554,8 +628,11 @@ function detail(id) {
   const s = byId.get(id);
   if (!s) return;
   const p = state.progress[id];
+  const mastery = p?.assembly
+    ? `<p class="content-version assembly-detail">문장 조립 · 방해 단어 ${p.assembly.level}개 단계<br>${p.assembly.level === 2 ? "가장 높은 조립 단계로 연습 중이에요." : `다음 단계까지 힌트 없이 맞힌 날 ${p.assembly.qualifiedDates.length}/3일`}</p>`
+    : "";
   showDialog(
-    `<div class="dialog-header"><span>${badge(s)} · ${escape(s.pos)}</span><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><h2 class="word">${escape(s.word)}</h2><div class="speech-toolbar">${readButton("detail", "단어·예문 듣기", id)}</div><p class="definition">${escape(s.definitions[0])}</p>${s.examples.map((_, i) => `<p class="example sentence">${example(s, i)}</p>`).join("")}<details><summary class="hint">한국어 뜻 보기</summary><p>${escape(s.ko)}</p></details>${p ? `<p class="content-version">정답 ${p.right}회 · 오답 ${p.wrong}회<br>다음 복습: ${new Date(p.due).toLocaleDateString("ko-KR")}${p.mistake === "active" ? ` · 해결까지 ${p.resolvedDates.length}/${state.settings.resolveDays}일` : ""}</p>` : ""}<div class="actions"><button class="btn primary" data-action="practice-one" data-id="${id}">이 뜻 학습하기 ${icon("arrow")}</button>${id.startsWith("custom-") ? `<button class="btn" data-action="edit-word" data-id="${id}">수정</button><button class="btn danger" data-action="delete-word" data-id="${id}">삭제</button>` : ""}</div>`,
+    `<div class="dialog-header"><span>${badge(s)} · ${escape(s.pos)}</span><button class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("close")}</button></div><h2 class="word">${escape(s.word)}</h2><div class="speech-toolbar">${readButton("detail", "단어·예문 듣기", id)}</div><p class="definition">${escape(s.definitions[0])}</p>${s.examples.map((_, i) => `<p class="example sentence">${example(s, i)}</p>`).join("")}<details><summary class="hint">한국어 뜻 보기</summary><p>${escape(s.ko)}</p></details>${p ? `<p class="content-version">정답 ${p.right}회 · 오답 ${p.wrong}회<br>다음 복습: ${new Date(p.due).toLocaleDateString("ko-KR")}${p.mistake === "active" ? ` · 해결까지 ${p.resolvedDates.length}/${state.settings.resolveDays}일` : ""}</p>` : ""}${mastery}<div class="actions"><button class="btn primary" data-action="practice-one" data-id="${id}">이 뜻 학습하기 ${icon("arrow")}</button>${id.startsWith("custom-") ? `<button class="btn" data-action="edit-word" data-id="${id}">수정</button><button class="btn danger" data-action="delete-word" data-id="${id}">삭제</button>` : ""}</div>`,
   );
 }
 function wordForm(id) {
@@ -647,6 +724,7 @@ async function refreshContent(manual = false) {
           !s.word ||
           !LEVELS[s.level] ||
           !s.definitions?.length ||
+          !validAssemblyAlternatives(s) ||
           !s.examples?.every((e) => e.includes("{}")) ||
           !s.distractors?.every((id) => ids.has(id)),
       )
@@ -798,7 +876,55 @@ document.addEventListener("click", async (e) => {
     id = b.dataset.id;
   if (a === "speak") readAloud(b.dataset.read, id);
   else if (a === "start") await start(b.dataset.mode);
-  else if (a === "favorite") {
+  else if (a === "study-format" && Object.hasOwn(FORMATS, b.dataset.format)) {
+    await mutation(() => (state.settings.format = b.dataset.format));
+  } else if (
+    a.startsWith("assembly-") &&
+    session?.question.type === "assembly" &&
+    !session.complete &&
+    !session.answered
+  ) {
+    const q = session.question;
+    const chosen = session.selectedTokens || [];
+    if (a === "assembly-submit") {
+      if (chosen.length !== q.requiredCount) return;
+      await answer(null, checkAssembly(q, chosen), true);
+      requestAnimationFrame(() =>
+        $(".feedback")?.scrollIntoView({ block: "start", behavior: "instant" }),
+      );
+    } else {
+      await mutation(() => {
+        session.selectedTokens ||= [];
+        if (
+          a === "assembly-add" &&
+          q.tokens.some((token) => token.id === id) &&
+          !chosen.includes(id) &&
+          chosen.length < q.requiredCount
+        )
+          session.selectedTokens.push(id);
+        else if (a === "assembly-remove")
+          session.selectedTokens = chosen.filter((tokenId) => tokenId !== id);
+        else if (a === "assembly-reset") session.selectedTokens = [];
+        else if (a === "assembly-hint") {
+          session.assemblyAssisted = true;
+          session.assemblyHint = true;
+        }
+      });
+      if (e.detail === 0) {
+        const action =
+          a === "assembly-add"
+            ? "assembly-remove"
+            : a === "assembly-remove"
+              ? "assembly-add"
+              : a;
+        document
+          .querySelector(
+            `[data-action="${action}"]${id ? `[data-id="${id}"]` : ""}`,
+          )
+          ?.focus({ preventScroll: true });
+      }
+    }
+  } else if (a === "favorite") {
     await mutation(() => {
       state.favorites = state.favorites.includes(id)
         ? state.favorites.filter((x) => x !== id)
@@ -821,7 +947,7 @@ document.addEventListener("click", async (e) => {
   } else if (a === "reveal") {
     speaker.stop();
     await mutation(() => (session.revealed = true));
-  } else if (a === "next") {
+  } else if (a === "next" && session?.answered && !session.complete) {
     speaker.stop();
     await mutation(() => {
       session.index++;
@@ -949,6 +1075,7 @@ document.addEventListener("change", async (e) => {
   } else if (el.dataset.setting) {
     const key = el.dataset.setting;
     let value = el.type === "checkbox" ? el.checked : el.value;
+    if (key === "format" && !Object.hasOwn(FORMATS, value)) return;
     if (key === "speechRate") {
       value = Number(value);
       if (!SPEECH_RATES.includes(value)) return;
@@ -1031,6 +1158,10 @@ async function boot() {
         ...state.settings,
       };
       state.settings.autoRead = state.settings.autoRead === true;
+      if (!Object.hasOwn(FORMATS, state.settings.format))
+        state.settings.format = "choice";
+      state.settings.adaptiveAssembly =
+        state.settings.adaptiveAssembly !== false;
       if (!SPEECH_RATES.includes(state.settings.speechRate))
         state.settings.speechRate = 1;
       session = saved.session;
