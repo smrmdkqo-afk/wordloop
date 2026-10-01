@@ -240,7 +240,7 @@ try {
   await page.getByLabel("하루 새 단어 수", { exact: true }).fill("1");
   await page.getByLabel("하루 새 단어 수", { exact: true }).press("Tab");
   await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
-  await page.getByLabel("문제 방향", { exact: true }).selectOption("meaning");
+  await page.getByLabel("문제 방식", { exact: true }).selectOption("meaning");
   await page.getByText("설정을 저장했어요.", { exact: true }).waitFor();
   await page.getByRole("link", { name: "홈", exact: true }).click();
   await page.getByRole("button", { name: "오늘 학습 시작하기" }).click();
@@ -445,7 +445,7 @@ try {
   fixedPage.on("pageerror", (e) => errors.push(e.message));
   await fixedPage.goto(base);
   await fixedPage.getByRole("link", { name: "설정", exact: true }).click();
-  await fixedPage.getByLabel("문제 방향", { exact: true }).selectOption("word");
+  await fixedPage.getByLabel("문제 방식", { exact: true }).selectOption("word");
   await fixedPage.getByText("설정을 저장했어요.", { exact: true }).waitFor();
   await fixedPage.getByRole("link", { name: "홈", exact: true }).click();
   await fixedPage.getByRole("button", { name: "오늘 학습 시작하기" }).click();

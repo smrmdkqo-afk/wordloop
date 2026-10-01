@@ -1,7 +1,8 @@
 export const FORMATS = Object.freeze({
-  choice: "선택형",
-  assembly: "문장 조립",
-  mixed: "혼합",
+  meaning: "단어 → 영어 뜻",
+  word: "영어 뜻 → 단어",
+  assembly: "영어 뜻 문장 조립",
+  mixed: "섞어서 풀기",
 });
 
 const EXTRA_WORDS = [
@@ -147,10 +148,25 @@ export function formatQueue(queue, format, random = Math.random) {
       random,
     ).slice(0, count),
   );
-  return queue.map((item, i) => ({
-    ...item,
-    format: assembly.has(i) ? "assembly" : "choice",
-  }));
+  const choices = queue.map((_, i) => i).filter((i) => !assembly.has(i));
+  const wordChoices = new Set(
+    format === "mixed"
+      ? shuffled(choices, random).slice(0, Math.floor(choices.length / 2))
+      : [],
+  );
+  return queue.map((item, i) => {
+    const isAssembly = assembly.has(i);
+    return {
+      ...item,
+      format: isAssembly ? "assembly" : "choice",
+      ...(!isAssembly
+        ? {
+            direction:
+              format === "word" || wordChoices.has(i) ? "word" : "meaning",
+          }
+        : {}),
+    };
+  });
 }
 
 export function recordAssembly(

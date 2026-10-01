@@ -12,6 +12,7 @@ import {
   removeAutomaticRetries,
   activeStreak,
   validateBackup,
+  migrateStudySettings,
   shuffle,
 } from "./core.js";
 import { read, write } from "./storage.js";
@@ -281,16 +282,7 @@ function learn() {
     (session && !session.complete
       ? `<div class="resume-banner"><span>풀던 ${session.queue.length - session.index}문제가 저장되어 있어요.</span><a class="btn small" href="${SESSION_ROUTE}">이어서 풀기 ${icon("arrow")}</a></div>`
       : "") +
-    `<section class="format-panel" aria-label="새 학습의 문제 방식"><div><h2>어떻게 풀까요?</h2><p>새로 시작하는 학습에 적용해요. 풀던 문제는 그대로 이어집니다.</p></div><div class="format-choices">${Object.entries(
-      FORMATS,
-    )
-      .map(
-        ([value, label]) =>
-          `<button class="format-choice ${state.settings.format === value ? "active" : ""}" data-action="study-format" data-format="${value}" aria-pressed="${state.settings.format === value}">${label}</button>`,
-      )
-      .join(
-        "",
-      )}</div><p class="format-description">${state.settings.format === "assembly" ? "단어와 한국어 뜻을 보고, 단어 조각으로 영어 뜻을 완성해요." : state.settings.format === "mixed" ? "선택형과 문장 조립을 함께 풀어요. 10문제라면 선택형 7개·조립 3개예요." : "단어와 영어 뜻을 연결하는 보기 4개 중 하나를 골라요."}</p></section>` +
+    `<div class="study-method" aria-label="현재 문제 방식"><div><span>현재 방식</span><strong>${FORMATS[state.settings.format]}</strong><p>새로 시작하는 학습에 적용해요.</p></div><a class="btn small" href="#settings" aria-label="문제 방식 변경">변경 ${icon("settings")}</a></div>` +
     `<div class="mode-grid">${card("new", "새 단어 배우기", "문제를 먼저 풀고, 정답과 예문으로 익혀요.", p.fresh.length + "개 남음", "spark")}${card("review", "오늘의 복습", "복습할 때가 된 뜻을 다시 꺼내 봐요.", p.review.length + "문제 준비됨", "calendar")}${card("mistakes", "틀린 문제만", "헷갈렸던 뜻을 다른 예문과 보기로 만나요.", p.mistakes.length + "개 · 한 번에 최대 20개", "repeat")}${card("favorites", "즐겨찾기 학습", "기억하고 싶은 표현을 더 단단하게.", all.filter((s) => state.favorites.includes(s.id)).length + "개", "star")}</div><div class="notice">새 단어는 선택한 난이도에서 출제해요. 이미 배운 뜻의 복습은 난이도를 바꿔도 이어집니다.</div><button class="btn ghost wide" data-action="start" data-mode="extra">목표와 별도로 더 공부하기 ${icon("arrow")}</button>`
   );
 }
@@ -306,7 +298,12 @@ function prepareQuestion() {
             ? state.progress[s.id]?.assembly?.level || 0
             : 0,
         )
-      : makeQuestion(s, byId, state.settings.mode, lastQuestions[s.id]);
+      : makeQuestion(
+          s,
+          byId,
+          item.direction || session.choiceMode || "mixed",
+          lastQuestions[s.id],
+        );
   const q = session.question;
   lastQuestions[s.id] = {
     exampleIndex: q.exampleIndex,
@@ -584,7 +581,7 @@ function settings() {
      .join("")}</div>`,
  )}${row(
    "문제 방식",
-   "선택형, 영어 뜻 문장 조립, 두 가지 혼합 중에서 골라요. 새 학습부터 적용해요.",
+   `${st.format === "assembly" ? "단어와 한국어 뜻을 보고 영어 단어 조각으로 뜻을 완성해요." : st.format === "mixed" ? "10문제 기준 선택형 7개·문장 조립 3개예요. 선택형은 두 방향을 섞어요." : st.format === "word" ? "영어 뜻을 보고 알맞은 단어를 보기에서 골라요." : "단어와 예문을 보고 알맞은 영어 뜻을 보기에서 골라요."} 새 학습부터 적용해요.`,
    `<select aria-label="문제 방식" data-setting="format">${Object.entries(
      FORMATS,
    )
@@ -593,25 +590,12 @@ function settings() {
          `<option value="${v}" ${st.format === v ? "selected" : ""}>${l}</option>`,
      )
      .join("")}</select>`,
- )}${row(
-   "문제 방향",
-   "선택형 문제에서 단어와 영어 뜻 중 무엇을 먼저 볼지 정해요.",
-   `<select aria-label="문제 방향" data-setting="mode">${[
-     ["mixed", "두 가지 섞어서"],
-     ["meaning", "단어 → 영어 뜻"],
-     ["word", "영어 뜻 → 단어"],
-   ]
-     .map(
-       ([v, l]) =>
-         `<option value="${v}" ${st.mode === v ? "selected" : ""}>${l}</option>`,
-     )
-     .join("")}</select>`,
  )}</section>
  <section class="setting-section"><h2>문장 조립</h2>${row("방해 단어 자동 조절", "뜻마다 서로 다른 3일의 첫 시도에서 힌트 없이 맞히면 방해 단어를 하나씩, 최대 2개까지 늘려요. 방해 단어가 있는 단계에서 2회 연속 틀리면 다음에는 하나 줄여요.", `<label class="switch"><input type="checkbox" aria-label="방해 단어 자동 조절" data-setting="adaptiveAssembly" ${st.adaptiveAssembly ? "checked" : ""}><span></span></label>`)}<p class="content-version">끄면 방해 단어 없이 연습해요. 쌓인 숙련 기록은 보관해요. 초급·중급·고급 단어 난이도와는 별도로 조절됩니다.</p></section>
  <section class="setting-section"><h2>음성 읽기</h2>${row("문제 자동 읽기", "선택형은 문제·예문, 문장 조립은 단어 발음만 읽어요. 조립 정답은 채점 후 들을 수 있어요.", `<label class="switch"><input type="checkbox" aria-label="문제 자동 읽기" data-setting="autoRead" ${st.autoRead ? "checked" : ""} ${speaker.supported ? "" : "disabled"}><span></span></label>`)}${row("읽기 속도", "편안하게 들리는 속도를 골라 보세요.", `<select aria-label="읽기 속도" data-setting="speechRate" ${speaker.supported ? "" : "disabled"}>${SPEECH_RATES.map((rate) => `<option value="${rate}" ${st.speechRate === rate ? "selected" : ""}>${rate}배${rate === 1 ? " (보통)" : rate === 0.75 ? " (천천히)" : ""}</option>`).join("")}</select>`)}<div class="speech-toolbar">${readButton("preview", "음성 미리 듣기")}</div><p class="content-version">${speaker.supported ? "기기의 영어 음성을 사용해요. 음성에 따라 인터넷 연결이 필요할 수 있어요." : "이 브라우저는 음성 읽기를 지원하지 않아요. 다른 브라우저에서 열어 주세요."}</p></section>
  <section class="setting-section"><h2>틀린 문제 관리</h2>${row("오답 자동 저장", "끄면 새 오답을 문제장에 추가하지 않아요. 일반 복습과 기존 오답은 유지해요.", `<label class="switch"><input type="checkbox" aria-label="오답 자동 저장" data-setting="autoMistakes" ${st.autoMistakes ? "checked" : ""}><span></span></label>`)}${row("해결 처리 기준", "틀린 날 이후, 서로 다른 날에 맞힌 횟수예요. 다시 틀리면 처음부터 세어요.", `<select aria-label="오답 해결 처리 기준" data-setting="resolveDays">${[1, 2, 3, 4, 5].map((v) => `<option value="${v}" ${st.resolveDays === v ? "selected" : ""}>서로 다른 ${v}일 정답</option>`).join("")}</select>`)}</section>
  <section class="setting-section"><h2>내 단어장 보관하기</h2>${row("백업 및 복원", "기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업해 주세요.", `<div class="data-actions"><button class="btn small" data-action="export">${icon("download")} 백업 저장</button><button class="btn small" data-action="import">불러오기</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div>`)}${row("단어장 업데이트", `${countWords(bundle.senses).toLocaleString()}단어 · ${bundle.senses.length.toLocaleString()}개의 뜻`, '<button class="btn small" data-action="update">업데이트 확인</button>')}<p class="content-version">단어장 ${escape(bundle.version)} · ${navigator.onLine ? "온라인" : "오프라인"} · <span id="offline-state">오프라인 준비 확인 중</span></p></section>
- <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.5.0 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
+ <section class="setting-section"><h2>앱으로 사용하기</h2>${row("홈 화면에 설치", "설치하면 휴대폰에서 앱처럼 열 수 있어요. 로그인은 필요 없어요.", '<button class="btn small" data-action="install">설치 안내</button>')}<p class="content-version">Wordloop 1.5.1 · 학습 기록은 이 기기에만 저장됩니다.<br><a href="./data/ATTRIBUTION.md" target="_blank" rel="noopener">단어장 출처·이용 조건</a></p></section>`
   );
 }
 function showDialog(html) {
@@ -876,9 +860,7 @@ document.addEventListener("click", async (e) => {
     id = b.dataset.id;
   if (a === "speak") readAloud(b.dataset.read, id);
   else if (a === "start") await start(b.dataset.mode);
-  else if (a === "study-format" && Object.hasOwn(FORMATS, b.dataset.format)) {
-    await mutation(() => (state.settings.format = b.dataset.format));
-  } else if (
+  else if (
     a.startsWith("assembly-") &&
     session?.question.type === "assembly" &&
     !session.complete &&
@@ -1153,28 +1135,28 @@ async function boot() {
     ]);
     if (saved) {
       state = saved.state;
+      session = saved.session;
+      let migrated = migrateStudySettings(state.settings, session);
       state.settings = {
         ...structuredClone(DEFAULT_SETTINGS),
         ...state.settings,
       };
       state.settings.autoRead = state.settings.autoRead === true;
-      if (!Object.hasOwn(FORMATS, state.settings.format))
-        state.settings.format = "choice";
       state.settings.adaptiveAssembly =
         state.settings.adaptiveAssembly !== false;
       if (!SPEECH_RATES.includes(state.settings.speechRate))
         state.settings.speechRate = 1;
-      session = saved.session;
       lastQuestions = saved.lastQuestions || {};
       if (session?.phase === "learn") {
         session.phase = "quiz";
         session.showHint = false;
-        await persist();
+        migrated = true;
       }
       if (Object.hasOwn(state.settings, "hideEnglish")) {
         delete state.settings.hideEnglish;
-        await persist();
+        migrated = true;
       }
+      if (migrated) await persist();
     }
     bundle = content;
     if (bundle) {

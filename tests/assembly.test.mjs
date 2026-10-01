@@ -159,7 +159,7 @@ test("format is fixed up front without changing queue size or the input", () => 
       kind: "new",
     }));
     const before = structuredClone(queue);
-    for (const format of ["choice", "assembly", "mixed"]) {
+    for (const format of ["meaning", "word", "assembly", "mixed"]) {
       const result = formatQueue(queue, format, () => 0.42);
       assert.equal(result.length, n);
       assert.deepEqual(
@@ -231,14 +231,16 @@ test("mastery is per sense, capped at two extras, and easy practice preserves a 
   assert.equal(state.progress[other.id].assembly.attempts, 1);
 });
 
-test("old backups default to choice; new settings and mastery survive with strict validation", () => {
+test("old backup directions migrate; new settings and mastery survive with strict validation", () => {
   const state = emptyState();
   delete state.settings.format;
+  state.settings.mode = "word";
   delete state.settings.adaptiveAssembly;
   const old = validateBackup(backup(state));
-  assert.equal(old.settings.format, "choice");
+  assert.equal(old.settings.format, "word");
   assert.equal(old.settings.adaptiveAssembly, true);
   state.settings.format = "mixed";
+  delete state.settings.mode;
   state.settings.adaptiveAssembly = false;
   attempt(state, 1, true);
   assert.deepEqual(validateBackup(backup(state)), state);
@@ -256,7 +258,7 @@ test("old backups default to choice; new settings and mastery survive with stric
   }
   state.settings.format = "constructor";
   assert.throws(() => validateBackup(backup(state)));
-  state.settings.format = "choice";
+  state.settings.format = "meaning";
   state.settings.adaptiveAssembly = "yes";
   assert.throws(() => validateBackup(backup(state)));
 });

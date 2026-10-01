@@ -107,7 +107,7 @@ try {
     await page.getByLabel("문제 자동 읽기", { exact: true }).isChecked(),
     false,
   );
-  await setting("mode", "word");
+  await setting("format", "word");
   await setting("dailyNew", 2);
   await setting("speechRate", 0.75);
   await btn("음성 미리 듣기").click();

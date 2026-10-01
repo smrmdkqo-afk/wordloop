@@ -15,12 +15,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   dailyNew: 10,
   dailyReview: 20,
   levels: ["beginner", "intermediate"],
-  mode: "mixed",
   autoMistakes: true,
   resolveDays: 2,
   autoRead: false,
   speechRate: 1,
-  format: "choice",
+  format: "meaning",
   adaptiveAssembly: true,
 });
 export function dateKey(date = new Date()) {
@@ -36,6 +35,44 @@ export function emptyState() {
     custom: [],
     contentVersion: null,
   };
+}
+// Convert older separate format/direction preferences once. Freeze the older
+// session's direction outside its queue, leaving the saved question untouched.
+export function migrateStudySettings(settings, session = null) {
+  const directions = ["meaning", "word", "mixed"];
+  const legacyDirection = directions.includes(settings.mode)
+    ? settings.mode
+    : ["meaning", "word"].includes(settings.format)
+      ? settings.format
+      : "mixed";
+  let changed = false;
+  if (
+    session &&
+    !session.complete &&
+    !directions.includes(session.choiceMode) &&
+    session.queue.some(
+      (item) =>
+        item.format !== "assembly" &&
+        !["meaning", "word"].includes(item.direction),
+    )
+  ) {
+    session.choiceMode = legacyDirection;
+    changed = true;
+  }
+  const format = Object.hasOwn(FORMATS, settings.format)
+    ? settings.format
+    : settings.format === undefined || settings.format === "choice"
+      ? legacyDirection
+      : DEFAULT_SETTINGS.format;
+  if (settings.format !== format) {
+    settings.format = format;
+    changed = true;
+  }
+  if (Object.hasOwn(settings, "mode")) {
+    delete settings.mode;
+    changed = true;
+  }
+  return changed;
 }
 export function today(state, key = dateKey()) {
   return (
@@ -318,10 +355,14 @@ export function validateBackup(input) {
     !Array.isArray(s.settings.levels) ||
     !s.settings.levels.length ||
     s.settings.levels.some((l) => !Object.hasOwn(LEVELS, l)) ||
-    !["mixed", "meaning", "word"].includes(s.settings.mode) ||
+    (s.settings.mode !== undefined &&
+      !["mixed", "meaning", "word"].includes(s.settings.mode)) ||
     typeof s.settings.autoMistakes !== "boolean" ||
-    (s.settings.format !== undefined &&
-      !Object.hasOwn(FORMATS, s.settings.format)) ||
+    !(
+      Object.hasOwn(FORMATS, s.settings.format) ||
+      ((s.settings.format === undefined || s.settings.format === "choice") &&
+        ["mixed", "meaning", "word"].includes(s.settings.mode))
+    ) ||
     (s.settings.adaptiveAssembly !== undefined &&
       typeof s.settings.adaptiveAssembly !== "boolean") ||
     (s.settings.autoRead !== undefined &&
@@ -410,6 +451,7 @@ export function validateBackup(input) {
   const clean = emptyState();
   for (const k of Object.keys(clean))
     if (Object.hasOwn(s, k)) clean[k] = structuredClone(s[k]);
+  migrateStudySettings(clean.settings);
   clean.settings = { ...structuredClone(DEFAULT_SETTINGS), ...clean.settings };
   delete clean.settings.hideEnglish;
   return clean;

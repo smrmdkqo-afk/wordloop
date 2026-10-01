@@ -117,6 +117,14 @@ try {
     fullPage: true,
   });
   await nav("설정");
+  assert.equal(await page.getByLabel("문제 방향", { exact: true }).count(), 0);
+  assert.deepEqual(
+    await page
+      .getByLabel("문제 방식", { exact: true })
+      .locator("option")
+      .allTextContents(),
+    ["단어 → 영어 뜻", "영어 뜻 → 단어", "영어 뜻 문장 조립", "섞어서 풀기"],
+  );
   await setting("format", "assembly");
   await setting("autoRead", true);
   await page.screenshot({
@@ -124,18 +132,16 @@ try {
     fullPage: true,
   });
   await nav("학습");
-  await btn("혼합").click();
-  await page.waitForFunction(
-    async () =>
-      (await (await import("/src/storage.js")).read("snapshot")).state.settings
-        .format === "mixed",
+  assert.match(
+    await page.locator(".study-method").innerText(),
+    /영어 뜻 문장 조립/,
   );
-  await btn("문장 조립").click();
-  await page.waitForFunction(
-    async () =>
-      (await (await import("/src/storage.js")).read("snapshot")).state.settings
-        .format === "assembly",
-  );
+  assert.equal(await page.locator('[data-action="study-format"]').count(), 0);
+  await page.getByRole("link", { name: "문제 방식 변경", exact: true }).click();
+  await page.getByLabel("문제 방식", { exact: true }).waitFor();
+  await setting("format", "mixed");
+  await setting("format", "assembly");
+  await nav("학습");
 
   // Two prior unaided dates prepare a promotion without changing today's lesson.
   const borrowId = await page.evaluate(async () => {
@@ -358,20 +364,16 @@ try {
   await finishOne();
 
   // A 10-question mixed session includes exactly seven choices and three assemblies.
+  await nav("설정");
+  await setting("format", "mixed");
   await nav("학습");
-  await btn("혼합").click();
-  await page.waitForFunction(
-    async () =>
-      (await (await import("/src/storage.js")).read("snapshot")).state.settings
-        .format === "mixed",
-  );
   await page.getByRole("button", { name: /^새 단어 배우기/ }).click();
   await page.locator(".quiz").waitFor();
   const queue = (await saved()).session.queue;
   assert.equal(queue.length, 10);
   assert.equal(queue.filter((q) => q.format === "assembly").length, 3);
   await nav("설정");
-  await setting("format", "choice");
+  await setting("format", "word");
   await nav("학습");
   await page.getByRole("link", { name: "이어서 풀기" }).click();
   await page.locator(".quiz").waitFor();
@@ -384,6 +386,13 @@ try {
       i,
     );
     assert.equal((await saved()).session.queue.length, 10);
+    const question = (await saved()).session.question;
+    assert.equal(
+      question.type === "assembly" ? "assembly" : "choice",
+      queue[i].format,
+    );
+    if (queue[i].format === "choice")
+      assert.equal(question.direction, queue[i].direction);
     await btn("모르겠어요").click();
     await page.locator(".feedback.wrong").waitFor();
     await btn(i === 9 ? "학습 결과 보기" : "다음 문제").click();
@@ -394,6 +403,134 @@ try {
   assert.equal(result.session.attempts, 10);
   assert.equal(result.session.queue.length, 10);
   assert.equal(result.session.index, 10);
+
+  // Reproduce a 1.5.0 lesson whose choice directions were stored in settings.
+  // Updating settings after migration must affect only a newly started lesson.
+  const legacyContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const legacyPage = await legacyContext.newPage();
+    legacyPage.on("pageerror", (e) => errors.push(e.message));
+    const legacySaved = () =>
+      legacyPage.evaluate(async () =>
+        (await import("/src/storage.js")).read("snapshot"),
+      );
+    const legacyNav = async (name) => {
+      await legacyPage.getByRole("link", { name, exact: true }).click();
+      await legacyPage.waitForFunction(
+        (label) =>
+          document.querySelector(".nav-item.active")?.textContent.trim() ===
+          label,
+        name,
+      );
+    };
+    await legacyPage.goto(base);
+    await legacyPage
+      .getByRole("heading", { name: "오늘도, 한 단어 더.", exact: true })
+      .waitFor();
+    await legacyNav("설정");
+    await legacyPage
+      .getByLabel("문제 방식", { exact: true })
+      .selectOption("word");
+    await legacyPage.waitForFunction(
+      async () =>
+        (await (await import("/src/storage.js")).read("snapshot")).state
+          .settings.format === "word",
+    );
+    await legacyNav("학습");
+    await legacyPage.getByRole("button", { name: /^새 단어 배우기/ }).click();
+    await legacyPage.locator(".quiz").waitFor();
+    await legacyPage
+      .getByRole("button", { name: "모르겠어요", exact: true })
+      .click();
+    await legacyPage
+      .getByRole("button", { name: "다음 문제", exact: true })
+      .click();
+    await legacyPage.waitForFunction(
+      () => document.querySelector(".quiz-count strong")?.textContent === "2",
+    );
+    const beforeLegacy = await legacyPage.evaluate(async () => {
+      const { read, write } = await import("/src/storage.js");
+      const s = await read("snapshot");
+      s.state.settings.format = "choice";
+      s.state.settings.mode = "word";
+      s.session.format = "choice";
+      s.session.queue.forEach((item) => delete item.direction);
+      await write("snapshot", s);
+      return s;
+    });
+    await legacyPage.reload();
+    await legacyPage.locator(".quiz").waitFor();
+    let migrated = await legacySaved();
+    assert.equal(migrated.state.settings.format, "word");
+    assert.equal(Object.hasOwn(migrated.state.settings, "mode"), false);
+    assert.equal(migrated.session.choiceMode, "word");
+    const unchanged = structuredClone(migrated.session);
+    delete unchanged.choiceMode;
+    assert.deepEqual(unchanged, beforeLegacy.session);
+    assert.deepEqual(migrated.state.progress, beforeLegacy.state.progress);
+    assert.deepEqual(migrated.state.days, beforeLegacy.state.days);
+    await legacyNav("설정");
+    await legacyPage
+      .getByLabel("문제 방식", { exact: true })
+      .selectOption("assembly");
+    await legacyPage.waitForFunction(
+      async () =>
+        (await (await import("/src/storage.js")).read("snapshot")).state
+          .settings.format === "assembly",
+    );
+    await legacyPage.reload();
+    await legacyPage.getByLabel("문제 방식", { exact: true }).waitFor();
+    await legacyNav("학습");
+    await legacyPage.getByRole("link", { name: "이어서 풀기" }).click();
+    await legacyPage.locator(".quiz").waitFor();
+    assert.deepEqual(
+      (await legacySaved()).session.question,
+      beforeLegacy.session.question,
+    );
+    await legacyPage
+      .getByRole("button", { name: "모르겠어요", exact: true })
+      .click();
+    await legacyPage
+      .getByRole("button", { name: "다음 문제", exact: true })
+      .click();
+    await legacyPage.waitForFunction(
+      () => document.querySelector(".quiz-count strong")?.textContent === "3",
+    );
+    migrated = await legacySaved();
+    assert.equal(migrated.session.question.direction, "word");
+    assert.equal(migrated.session.queue.length, 10);
+    assert.equal(await legacyPage.locator(".answer").count(), 4);
+    await legacyPage
+      .getByRole("button", { name: "학습 잠시 멈추기", exact: true })
+      .click();
+    await legacyPage
+      .getByRole("heading", { name: "어떤 반복을 해볼까요?", exact: true })
+      .waitFor();
+    for (const width of [320, 390, 1440]) {
+      await legacyPage.setViewportSize({ width, height: 844 });
+      assert(
+        await legacyPage.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      await legacyPage.screenshot({
+        path: `test-results/unified-method-menu-${width}.png`,
+        fullPage: true,
+      });
+    }
+    legacyPage.once("dialog", (dialog) => dialog.accept());
+    await legacyPage.getByRole("button", { name: /^새 단어 배우기/ }).click();
+    await legacyPage.locator(".assembly-quiz").waitFor();
+    assert(
+      (await legacySaved()).session.queue.every(
+        (item) => item.format === "assembly",
+      ),
+    );
+  } finally {
+    await legacyContext.close();
+  }
   assert.deepEqual(errors, []);
   console.log(
     "Assembly browser checks passed: fixed mixed session, selection/resume/offline, speech, mastery, hint, mobile and desktop layouts.",
