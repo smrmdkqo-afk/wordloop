@@ -1360,33 +1360,6 @@ dialog .actions > .primary {
   font-size: 13px;
   box-shadow: var(--shadow);
 }
-.study-method {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 20px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  margin-bottom: 18px;
-}
-.study-method > div {
-  min-width: 0;
-}
-.study-method span,
-.study-method p {
-  color: var(--muted);
-  font-size: 11px;
-}
-.study-method strong {
-  display: block;
-  font-size: 14px;
-}
-.study-method .btn {
-  flex-shrink: 0;
-  min-height: 44px;
-}
 .question-type {
   font-size: 11px;
   color: var(--green);
@@ -1810,9 +1783,6 @@ dialog .actions > .primary {
   }
   .mode-card .count {
     font-size: 11px;
-  }
-  .study-method {
-    padding: 12px 14px;
   }
   .assembly-workspace {
     padding: 12px;

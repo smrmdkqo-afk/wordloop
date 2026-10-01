@@ -132,12 +132,9 @@ try {
     fullPage: true,
   });
   await nav("학습");
-  assert.match(
-    await page.locator(".study-method").innerText(),
-    /영어 뜻 문장 조립/,
-  );
+  assert.equal(await page.locator(".study-method").count(), 0);
   assert.equal(await page.locator('[data-action="study-format"]').count(), 0);
-  await page.getByRole("link", { name: "문제 방식 변경", exact: true }).click();
+  await nav("설정");
   await page.getByLabel("문제 방식", { exact: true }).waitFor();
   await setting("format", "mixed");
   await setting("format", "assembly");
